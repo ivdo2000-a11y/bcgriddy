@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Battle Cats Grid Game</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="userProfileBtn" style="position: fixed; top: 20px; left: 20px; display: none; align-items: center; gap: 10px; background: #1a1b1e; padding: 8px 15px; border-radius: 20px; border: 1px solid #35383f; cursor: pointer; z-index: 2500;" onclick="openProfileModal()">
+    <img id="profileAvatar" src="" style="width: 32px; height: 32px; border-radius: 50%; background: #333;">
+    <span id="profileName" style="color: #fff; font-weight: bold; font-family: 'Segoe UI';">User</span>
+</div>
+<div class="modal" id="authModal">
+    <div class="modal-content" style="max-width: 400px; text-align: center;">
+        <h3>Login to Battle Cats Grid</h3>
+        <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" onclick="loginWithProvider('google')">Login with Google</button>
+        <button class="btn" style="width:100%; margin-bottom:10px; background:#5865f2; color:white;" onclick="loginWithProvider('discord')">Login with Discord</button>
+        
+        <div style="margin: 20px 0; color: #888;">— OR —</div>
+        
+        <input type="email" id="authEmail" class="search-input" placeholder="Email">
+        <input type="password" id="authPassword" class="search-input" placeholder="Password">
+        <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="loginWithEmail()">Login / Register</button>
+    </div>
+</div>
+    <!-- CALENDAR PAGE -->
+    <div class="calendar-container" id="calendarPage">
+        <div class="calendar-header" style="position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 20px; gap: 15px;">
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div class="calendar-title" style="font-size: 28px; font-weight: bold; letter-spacing: 1px;">Battle Cats Grid</div>
+                <div class="calendar-subtitle" style="font-size: 14px; color: #8888a0; margin-top: 5px;">Grid Archive</div>
+            </div>
+            
+            <div class="calendar-actions" style="position: absolute; top: 0; right: 0; display: flex; gap: 10px;">
+                <button class="action-btn" onclick="startEndlessMode()" title="Infinite Mode">
+                    <img src="infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <span style="display:none; font-size:24px;">🌀</span>
+                </button>
+                <button class="action-btn" onclick="openEditorPage()" title="Grid Editor">
+                    <img src="wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <span style="display:none; font-size:24px;">🛠️</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="calendar-nav">
+            <button onclick="changeMonth(-1)">◀</button>
+            <span id="currentMonth" style="font-weight: bold; font-size: 18px;"></span>
+            <button onclick="changeMonth(1)">▶</button>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+	<div class="modal" id="adminPanelModal">
+    <div class="modal-content" style="max-width: 800px;">
+        <h3>Pending Grid Submissions</h3>
+        <div id="pendingGridsList"></div>
+    </div>
+</div>
+   	
+    <div class="grid-page" id="gridPage">
+        <div class="top-nav">
+            <div style="display: flex; justify-content: flex-start; align-items: center; gap: 10px;">
+                <button class="nav-btn nav-btn-primary" onclick="closeGridPage()">← Back</button>
+                <button class="nav-btn nav-btn-primary" id="nextEndlessBtn" onclick="startEndlessMode()" style="display:none; padding: 8px 16px; font-size: 14px; border-radius: 8px;">Next Grid</button>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <button class="nav-btn" id="prevGridBtn" onclick="navDailyGrid(-1)" style="font-size: 18px; padding: 5px 10px;">◀</button>
+                    <div class="nav-btn" style="font-size:24px; font-weight: bold; padding:0; cursor:pointer; line-height: 1;" onclick="closeGridPage()">Battle Cats Grid</div>
+                    <button class="nav-btn" id="nextGridBtn" onclick="navDailyGrid(1)" style="font-size: 18px; padding: 5px 10px;">▶</button>
+                </div>
+                <div id="modeTitle" style="font-size:14px; color: #a0a5b0; margin-top:5px;"></div>
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
+                <button class="action-btn" onclick="startEndlessMode()" title="Infinite Mode">
+                    <img src="infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <span style="display:none; font-size:24px;">🌀</span>
+                </button>
+                <button class="action-btn" onclick="openEditorPage()" title="Grid Editor">
+                    <img src="wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <span style="display:none; font-size:24px;">🛠️</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="grid-layout">
+            <div class="grid-main">
+                <div class="grid-title-area" style="text-align: center; margin-bottom: 20px;">
+                    <div class="grid-title" id="gridTitleDisplay" style="font-size: 30px; letter-spacing: 2px; color: #a0a5b0; text-transform: uppercase;"></div>
+                </div>
+                
+                <div class="grid-wrapper" id="gridWrapper">
+                    <table class="grid-table" id="gridTable">
+                        <thead id="gridHeader"></thead>
+                        <tbody id="gridBody"></tbody>
+                    </table>
+                </div>
+                <button class="btn btn-danger" id="cancelCannonBtn" style="display:none; width:100%; margin-top:15px; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; text-transform:uppercase;" onclick="cancelCannon()">Cancel</button>
+
+                <div class="results-section" id="inlineResults">
+                    <div class="results-tabs">
+                        <button class="res-tab active" data-tab="least" onclick="switchResTab('least')">Least Common</button>
+                        <button class="res-tab" data-tab="most" onclick="switchResTab('most')">Most Common</button>
+                        <button class="res-tab" data-tab="candidates" onclick="switchResTab('candidates')">Candidates</button>
+                    </div>
+                    
+                    <div id="resultsGridContainer" class="results-grid-container"></div>
+
+                    <div style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label class="toggle-switch" style="margin: 0;">
+                                <input type="checkbox" id="resultsBrutalToggle" onchange="toggleResultsBrutal()">
+                                <span class="slider"></span>
+                            </label>
+                            <span style="color:#ff4757; font-weight:bold; font-size: 16px; text-transform: uppercase;">Brutal</span>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label class="toggle-switch" style="margin: 0;">
+                                <input type="checkbox" id="resultsNoRepeatsToggle" onchange="toggleResultsNoRepeats()">
+                                <span class="slider"></span>
+                            </label>
+                            <span style="color:#4caf50; font-weight:bold; font-size: 16px; text-transform: uppercase;">No Repeats</span>
+                        </div>
+
+                        <div id="curseblastToggleContainer" style="display: none; align-items: center; gap: 10px;">
+                            <label class="toggle-switch" style="margin: 0;">
+                                <input type="checkbox" id="resultsCurseblastToggle" onchange="toggleResultsCurseblast()">
+                                <span class="slider"></span>
+                            </label>
+                            <span style="color:#9370DB; font-weight:bold; font-size: 16px; text-transform: uppercase;">With Curseblast</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="sidebar-panel" id="difficultyPanel">
+                    <div class="panel-title" data-bc="DIFFICULTY" data-bc-size="16"></div>
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%;">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="brutalToggle" onchange="toggleBrutalMode()">
+                            <span class="slider"></span>
+                        </label>
+                        <span class="tooltip" style="margin-left: 5px; cursor: help;">
+                            <span class="info-icon" style="background:#ff4757; font-size: 14px; width: 22px; height: 22px; border: 2px solid #ff4757; border-radius: 50%; display: flex; align-items: center; justify-content: center;">?</span>
+                            <span class="tooltiptext" style="width: 320px; bottom: 150%; left: 50%; transform: translateX(-50%); margin-left: 0;">
+                                Every cell on the grid receives a unique extra condition. There are 9 conditions in total — one per cell. They are displayed in red text in the top-left corner. Timer penalty is twice less strict. All score is multiplied by 150%, raising the score cap from 20000 to 30000.
+                            </span>
+                        </span>
+                    </div>
+                    <div style="margin-top:10px; font-size:12px; color:#ff4757; font-weight:bold; text-align:center;">Brutal</div>
+                </div>
+
+                <div class="sidebar-panel" id="livesPanel">
+                    <div class="panel-title" data-bc="LIVES" data-bc-size="16"></div>
+                    <div class="lives-display" id="livesDisplay"></div>
+                </div>
+                
+                <div class="sidebar-panel" id="cannonPanel">
+                    <div class="panel-title" data-bc="LOADOUT" data-bc-size="16"></div>
+                    <div class="cannon-display" id="cannonBtn" onclick="openEquipSelectModal()">
+                        <div class="loadout-container">
+                            <img class="loadout-foundation" id="imgFoundation" src="" onerror="this.style.display='none'">
+                            <img class="loadout-style" id="imgStyle" src="" onerror="this.style.display='none'">
+                            <img class="loadout-cannon" id="imgCannon" src="" onerror="this.style.display='none'">
+                        </div>
+                        <div id="cannonFallback" style="display:none; font-size:40px;">🚀</div>
+                        
+                        <div class="combo-display" id="comboDisplay" style="position:absolute; top:0; right:0; background:#ff4757; color:white; padding:2px 8px; border-radius:10px; font-weight:bold; font-size:14px; display:none;">x0</div>
+                    </div>
+                    <div style="font-size:12px; color:#a0a5b0; text-align:center; margin-top:5px; width:100%;">
+                        <span id="cannonNameText" style="display:block; font-weight:bold; color:#e09f3e;"></span>
+                        <span id="styleNameText" style="display:block; color:#00CED1;"></span>
+                        <span id="foundNameText" style="display:block; color:#9370DB;"></span>
+                        <span id="setBonusText" style="display:none; color:#ffd700; font-weight:bold; margin-top:5px;">Set Bonus Active!</span>
+                    </div>
+                    <div class="cannon-uses-text" style="margin-top:5px;">Uses: <span id="cannonCharges">0</span></div>
+                    <button class="btn btn-primary" style="margin-top: 15px; width: 100%; padding: 10px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; color: white;" onclick="useCannon()">FIRE!</button>
+                </div>
+
+                <div class="sidebar-panel" id="finalScorePanel">
+                    <div class="panel-title" data-bc="FINAL SCORE" data-bc-size="16"></div>
+                    <div class="final-score-header">
+                        <div class="final-grade" id="finalGrade">A</div>
+                        <div class="final-score-value" id="finalScoreValue">0</div>
+                    </div>
+                    <button class="breakdown-btn" onclick="toggleBreakdown()">Show Breakdown</button>
+                    <button class="breakdown-btn" style="background:#4caf50; color:white; border:none; margin-top:5px;" onclick="shareResult()">📤 Share Result</button>
+                    <div id="scoreBreakdown">
+                        <div style="font-weight:bold; margin-bottom:10px; color:#fff; font-size:16px;">Score breakdown</div>
+                        <div class="bd-row"><span>Filled cells (9 x 500)</span><span id="bd-cells">+0</span></div>
+                        <div class="bd-row"><span>Win bonus</span><span id="bd-win">+0</span></div>
+                        <div class="bd-row"><span>Lives remaining</span><span id="bd-lives">+0</span></div>
+                        <div class="bd-row"><span>Cannon charges</span><span id="bd-cannon">+0</span></div>
+                        <div class="bd-row"><span>Time bonus</span><span id="bd-time">+0</span></div>
+                        <div class="bd-row"><span>Rarity bonus</span><span id="bd-rarity">+0</span></div>
+                        <div class="bd-row"><span>Combo bonus</span><span id="bd-combo">+0</span></div>
+                        <div class="bd-row brutal-row" id="bd-brutal-row" style="display:none;"><span>Brutal Multiplier</span><span>x1.5</span></div>
+                    </div>
+                </div>
+
+                <div class="sidebar-panel actions-panel">
+                    <button class="btn btn-danger" onclick="resetCurrentGrid()">
+                        🔄 <span data-bc="Reset" data-bc-size="16"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDITOR PAGE -->
+    <div class="editor-page" id="editorPage">
+        <div class="top-nav">
+            <div style="display: flex; justify-content: flex-start; align-items: center; gap: 10px;">
+                <button class="nav-btn nav-btn-primary" onclick="closeEditorPage()">← Back</button>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div class="nav-btn" style="font-size:24px; font-weight: bold; padding:0; cursor:pointer; line-height: 1;" onclick="closeEditorPage()">Battle Cats Grid</div>
+                <div style="font-size:14px; color: #a0a5b0; margin-top:5px;">Grid Editor</div>
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
+                <button class="action-btn" onclick="startEndlessMode()" title="Infinite Mode">
+                    <img src="infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <span style="display:none; font-size:24px;">🌀</span>
+                </button>
+                <button class="action-btn" onclick="openEditorPage()" title="Grid Editor">
+                    <img src="wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <span style="display:none; font-size:24px;">🛠️</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="editor-container">
+            <input type="date" id="editorDate" class="search-input" style="margin-bottom:10px;">
+            
+            <div class="search-container">
+                <input type="text" id="editorUnitSearch" class="search-input" placeholder="Search unit to see matching conditions..." autocomplete="off">
+                <div id="editorUnitResults" class="autocomplete-results"></div>
+            </div>
+
+            <div style="margin-bottom:15px; display:flex; align-items:center; gap:10px;">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="editorBrutalToggle" onchange="updateEditor()">
+                    <span class="slider"></span>
+                </label>
+                <label for="editorBrutalToggle" style="color:#ff4757; font-weight:bold; cursor:pointer;">Brutal Mode</label>
+            </div>
+            
+            <div class="editor-grid-square" id="editorGrid"></div>
+            
+            <div class="modal-buttons" style="justify-content:center; margin-top:25px;">
+                <button class="btn btn-primary" id="editorSaveBtn" onclick="saveEditorGrid()" style="width:100%; opacity: 0.5; pointer-events: none;">Save Grid</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="equipSelectModal" style="z-index: 2500;">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
+            <h3 style="margin-bottom:10px;">Select Loadout</h3>
+            <p style="text-align:center; font-size:14px; color:#a0a5b0; margin-bottom:20px;">Note: You cannot change equipment after starting the grid.</p>
+            
+            <button class="btn btn-primary" style="width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; color: white; margin-bottom: 20px; font-size: 15px;" onclick="randomizeLoadout()">🎲 Random</button>
+            
+            <div class="equip-list-container">
+                <h4 style="color:#e09f3e; border-bottom:1px solid #4a4d55; padding-bottom:5px; margin-bottom:10px;">Cannons</h4>
+                <div class="equip-grid-vertical" id="equipCannonGrid"></div>
+
+                <h4 style="color:#00CED1; border-bottom:1px solid #4a4d55; padding-bottom:5px; margin:20px 0 10px 0;">Styles</h4>
+                <div class="equip-grid-vertical" id="equipStyleGrid"></div>
+
+                <h4 style="color:#9370DB; border-bottom:1px solid #4a4d55; padding-bottom:5px; margin:20px 0 10px 0;">Foundations</h4>
+                <div class="equip-grid-vertical" id="equipFoundationGrid"></div>
+            </div>
+            
+            <div class="modal-buttons" style="justify-content:center; margin-top:25px;">
+                <button class="btn btn-danger" onclick="closeEquipSelectModal()" style="width:100%;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="unitModal">
+        <div class="modal-content">
+            <h3 data-bc="Select Unit" data-bc-size="22"></h3>
+            <input type="text" class="search-input" id="unitSearch" placeholder="Start typing (min 3 chars)..." autocomplete="off">
+            <div class="suggestions" id="suggestions"></div>
+            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px;" onclick="closeUnitModal()">
+                <span data-bc="Cancel" data-bc-size="16"></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="modal" id="waterblastModal">
+        <div class="modal-content" style="display: flex; flex-direction: column; max-height: 85vh;">
+            <h3><span data-bc="Choose wisely" data-bc-size="22"></span></h3>
+            <div class="cannon-modal-grid" id="waterblastOptions" style="overflow-y: auto; flex: 1; padding-right: 5px;"></div>
+            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; margin-top: 15px; flex-shrink: 0;" onclick="closeWaterblastModal()">Cancel</button>
+        </div>
+    </div>
+
+    <div class="modal" id="candidatesModal" style="z-index: 3000;">
+        <div class="modal-content" style="max-width: 650px;">
+            <h3 id="candidatesTitle">Candidates</h3>
+            <div id="candidatesList" class="candidates-grid"></div>
+            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px;" onclick="closeCandidatesModal()">Close</button>
+        </div>
+    </div>
+
+    <div class="modal" id="unitInfoModal" style="z-index: 3100;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div id="unitInfoContent"></div>
+            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; margin-top:15px;" onclick="closeUnitInfoModal()">Close</button>
+        </div>
+    </div>
+
+    <div class="modal" id="conditionSelectModal" style="z-index: 3200;">
+        <div class="modal-content" style="max-width: 600px; display: flex; flex-direction: column;">
+            <h3>Select Condition</h3>
+            <input type="text" class="search-input" id="condSearch" placeholder="Search condition..." oninput="filterConditions()">
+            
+            <div id="condModes" style="display:flex; gap:10px; margin-bottom:15px; justify-content:center; flex-shrink: 0;">
+                <button class="cond-btn mode-btn" id="mode-and" onclick="setAppendMode('and')">+ AND</button>
+                <button class="cond-btn mode-btn" id="mode-or" onclick="setAppendMode('or')">+ OR</button>
+                <button class="cond-btn mode-btn" id="mode-not" onclick="setAppendMode('not')">+ NOT</button>
+            </div>
+            
+            <div id="condList" class="cond-list-container" style="flex: 1; overflow-y: auto; margin-bottom: 15px;"></div>
+            
+            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; flex-shrink: 0;" onclick="closeConditionSelectModal()">Cancel</button>
+        </div>
+    </div>
+
+    <script src="units_data.js"></script>
+    <script src="logic.js"></script>
+</body>
+</html>
