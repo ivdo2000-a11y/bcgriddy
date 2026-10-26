@@ -1,38 +1,47 @@
 const SUPABASE_URL = 'https://ziqkrsstxxclbfmndniq.supabase.co'; 
-const SUPABASE_ANON_KEY = 'https://ziqkrsstxxclbfmndniq.supabase.co/rest/v1/';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcWtyc3N0eHhjbGJmbW5kbmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMzc3NzMsImV4cCI6MjEwODYxMzc3M30.SExQGbLetwrb63-s6LzTTInqleNB7-byAzMpf6yIZZ8';
 
 const STORAGE_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
 const IMG_UNITS = `${STORAGE_BASE}/imgunits/`;
 const IMG_OTHER = `${STORAGE_BASE}/imgother/`;
 const CUSTOM_TXT = `${STORAGE_BASE}/custom/`;
 
-let supabase = null;
+let dbClient = null;
 let currentUser = null;
 let userProfile = null;
 
-if (window.supabase) {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+try {
+    if (window.supabase && SUPABASE_ANON_KEY !== 'ТВОЙ_ANON_KEY_СЮДА' && SUPABASE_ANON_KEY !== 'your-anon-key') {
+        dbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } else {
+        console.warn("⚠️ Supabase keys not configured. Running in OFFLINE mode.");
+    }
+} catch (e) {
+    console.error("⚠️ Failed to initialize Supabase. Running in OFFLINE mode.", e);
 }
 
 async function initAuth() {
-    if (!supabase) return;
+    if (!dbClient) {
+        document.getElementById('authModal').classList.remove('active'); 
+        return;
+    }
     
-    supabase.auth.onAuthStateChange(async (event, session) => {
+    dbClient.auth.onAuthStateChange(async (event, session) => {
         if (session) {
             currentUser = session.user;
-            const { data } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+            const { data } = await dbClient.from('profiles').select('*').eq('id', currentUser.id).single();
             
             if (data) {
                 userProfile = data;
             } else {
                 const username = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
                 const newProf = { id: currentUser.id, username, avatar_url: currentUser.user_metadata?.avatar_url || '', role: 'user' };
-                await supabase.from('profiles').insert([newProf]);
+                await dbClient.from('profiles').insert([newProf]);
                 userProfile = newProf;
             }
             
             document.getElementById('userProfileBtn').style.display = 'flex';
-            document.getElementById('profileAvatar').src = userProfile.avatar_url || 'https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/default_avatar.png';
+            document.getElementById('profileAvatar').src = userProfile.avatar_url || `${IMG_OTHER}default_avatar.png`;
             document.getElementById('profileName').textContent = userProfile.username;
             
             if (userProfile.role === 'admin') {
@@ -52,17 +61,17 @@ async function initAuth() {
 }
 
 window.loginWithProvider = async (provider) => {
-    if (!supabase) return showToast("Online features not configured.", "error");
-    await supabase.auth.signInWithOAuth({ provider });
+    if (!dbClient) return showToast("Online features not configured.", "error");
+    await dbClient.auth.signInWithOAuth({ provider });
 };
 
 window.loginWithEmail = async () => {
-    if (!supabase) return showToast("Online features not configured.", "error");
+    if (!dbClient) return showToast("Online features not configured.", "error");
     const email = document.getElementById('authEmail').value;
     const password = document.getElementById('authPassword').value;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await dbClient.auth.signInWithPassword({ email, password });
     if (error && error.message.includes("Invalid login")) {
-        const { error: signUpError } = await supabase.auth.signUp({ email, password });
+        const { error: signUpError } = await dbClient.auth.signUp({ email, password });
         if (!signUpError) showToast("Check your email for confirmation!", "success");
     } else if (!error) {
         showToast("Logged in!", "success");
@@ -72,7 +81,7 @@ window.loginWithEmail = async () => {
 };
 
 window.logout = async () => {
-    if (supabase) await supabase.auth.signOut();
+    if (dbClient) await dbClient.auth.signOut();
     document.getElementById('profileModal').classList.remove('active');
 };
 
@@ -83,7 +92,7 @@ window.openProfileModal = async () => {
     statsDiv.innerHTML = '<div style="color:#fff;">Loading stats...</div>';
     modal.classList.add('active');
 
-    const { data: history } = await supabase.from('user_grids').select('*').eq('user_id', currentUser.id);
+    const { data: history } = await dbClient.from('user_grids').select('*').eq('user_id', currentUser.id);
     
     if (!history || history.length === 0) {
         statsDiv.innerHTML = '<div style="color:#fff;">No games played yet.</div>';
@@ -154,11 +163,11 @@ window.openSettingsModal = () => {
 };
 
 window.toggleSetting = async (key) => {
-    if (!currentUser) return showToast("Login required to save settings.", "error");
+    if (!currentUser || !dbClient) return showToast("Login required to save settings.", "error");
     const val = document.getElementById('setting' + key.charAt(0).toUpperCase() + key.slice(1)).checked;
     if (!userProfile.settings) userProfile.settings = {};
     userProfile.settings[key] = val;
-    await supabase.from('profiles').update({ settings: userProfile.settings }).eq('id', currentUser.id);
+    await dbClient.from('profiles').update({ settings: userProfile.settings }).eq('id', currentUser.id);
     showToast("Setting saved!", "success");
 };
 
@@ -191,12 +200,12 @@ window.importSave = (event) => {
    ADMIN PANEL
    ========================================================================= */
 window.openAdminPanel = async () => {
-    if (!userProfile || userProfile.role !== 'admin') return;
+    if (!userProfile || userProfile.role !== 'admin' || !dbClient) return;
     document.getElementById('adminPanelModal').classList.add('active');
     const list = document.getElementById('pendingGridsList');
     list.innerHTML = '<div style="color:#fff;">Loading...</div>';
     
-    const { data: grids } = await supabase.from('grids')
+    const { data: grids } = await dbClient.from('grids')
         .select('*, profiles(username, avatar_url)')
         .eq('status', 'pending');
         
@@ -230,6 +239,7 @@ window.openAdminPanel = async () => {
 };
 
 window.approveGrid = async (id, newStatus) => {
+    if (!dbClient) return;
     let updateObj = { status: newStatus };
     if (newStatus === 'daily') {
         const dateStr = prompt("Enter date for this Daily Grid (YYYY-MM-DD):");
@@ -239,7 +249,7 @@ window.approveGrid = async (id, newStatus) => {
         updateObj.date = null;
     }
     
-    const { error } = await supabase.from('grids').update(updateObj).eq('id', id);
+    const { error } = await dbClient.from('grids').update(updateObj).eq('id', id);
     if (error) {
         showToast(error.message, "error");
     } else {
@@ -1001,9 +1011,9 @@ function getRandomCond() { const pool = allConditions.filter(cond => { if (cond 
 async function openGrid(keyOrDate) {
     let key = typeof keyOrDate === 'string' ? keyOrDate : getDateKey(keyOrDate);
     
-    if (supabase && key !== 'endless') {
+    if (dbClient && key !== 'endless') {
         try {
-            const { data } = await supabase.from('grids').select('*').eq('date', key).eq('status', 'daily').single();
+            const { data } = await dbClient.from('grids').select('*').eq('date', key).eq('status', 'daily').single();
             if (data) {
                 gridsData[key] = {
                     date: key, title: data.title, conditions: data.conditions, originalConditions: data.original_conditions,
@@ -1026,9 +1036,9 @@ async function openGrid(keyOrDate) {
     
     currentGrid = gridsData[key];
     
-    if (supabase && key !== 'endless') {
+    if (dbClient && key !== 'endless') {
         try {
-            const { data: votesData } = await supabase.from('votes').select('cell_index, unit_id').eq('grid_id', key);
+            const { data: votesData } = await dbClient.from('votes').select('cell_index, unit_id').eq('grid_id', key);
             currentGrid.realVotes = Array(9).fill().map(() => ({}));
             if (votesData) {
                 votesData.forEach(v => {
@@ -1296,10 +1306,10 @@ async function showFinalScore(isLoss = false) {
         
         renderResults();
 
-        if (currentUser && !currentGrid.isLoss && currentGrid.date !== 'endless') {
-            const { data: existing } = await supabase.from('user_grids').select('id').eq('user_id', currentUser.id).eq('grid_date', currentGrid.date);
+        if (currentUser && !currentGrid.isLoss && currentGrid.date !== 'endless' && dbClient) {
+            const { data: existing } = await dbClient.from('user_grids').select('id').eq('user_id', currentUser.id).eq('grid_date', currentGrid.date);
             if (!existing || existing.length === 0) {
-                await supabase.from('user_grids').insert([{
+                await dbClient.from('user_grids').insert([{
                     user_id: currentUser.id, grid_date: currentGrid.date, score: scoreObj.total,
                     completed: currentGrid.completed, is_loss: currentGrid.isLoss,
                     cannon: currentGrid.cannon, style: currentGrid.style, foundation: currentGrid.foundation,
@@ -1469,9 +1479,9 @@ function placeUnit(r, c, fullName, unitName, isCannon = false) {
         if (!isCannon) showToast(`Combo x${currentGrid.comboCount}!`, "success");
     }
     
-    if (currentUser && !isCannon && currentGrid.date !== 'endless' && supabase) {
+    if (currentUser && !isCannon && currentGrid.date !== 'endless' && dbClient) {
         const cellIdx = r * 3 + c;
-        supabase.from('votes').upsert({ grid_id: currentGrid.date, cell_index: cellIdx, unit_id: fullName.split(' ')[0].split('-')[0], user_id: currentUser.id })
+        dbClient.from('votes').upsert({ grid_id: currentGrid.date, cell_index: cellIdx, unit_id: fullName.split(' ')[0].split('-')[0], user_id: currentUser.id })
         .then(({error}) => { if(error) console.log("Vote error:", error); });
     }
 
@@ -1698,7 +1708,7 @@ function closeEquipSelectModal() {
         
         if (currentUser && userProfile && userProfile.settings && userProfile.settings.lockLoadout) {
             userProfile.settings.favCannon = currentCannon; userProfile.settings.favStyle = currentStyle; userProfile.settings.favFoundation = currentFoundation;
-            supabase.from('profiles').update({ settings: userProfile.settings }).eq('id', currentUser.id);
+            if (dbClient) dbClient.from('profiles').update({ settings: userProfile.settings }).eq('id', currentUser.id);
         }
 
         saveGrids(); loadGridUI();
@@ -2039,14 +2049,14 @@ async function saveEditorGrid() {
     
     const newGrid = { date: key, title: name, conditions: { rows: [...editorState.rows], cols: [...editorState.cols] }, cells: Array(3).fill().map(()=>Array(3).fill(null)), completed: false, timer: 0, cannon: 'Default', cannonUses: CANNONS['Default'].uses, style: 'Default', foundation: 'Default', extraRow: [false,false,false], extraCol: [false,false,false], originalConditions: { rows: [...editorState.rows], cols: [...editorState.cols] }, forceLegend: false, isBrutal: editorState.isBrutal, brutalConds: editorState.isBrutal ? computeDeterministicBrutals({ date: key, isBrutal: true, originalConditions: { rows: [...editorState.rows], cols: [...editorState.cols] } }) : null, lives: 3, correctCount: 0, firstDamage: false, duplicateNextUnit: false, pinkBlink: null, yellowBlink: null, comboCount: 0, comboTimer: 0, maxCombo: 0, hadCurseSet: false, curseFired: false, _cachedCurseConds: null, hasLostLife: false, ironWallShieldUsed: false, holyRows: [false, false, false], holyMantles: 0, legendaryCount: 0 };
     
-    if (currentUser && userProfile && userProfile.role === 'admin') {
-        const { error } = await supabase.from('grids').insert([{
+    if (currentUser && userProfile && userProfile.role === 'admin' && dbClient) {
+        const { error } = await dbClient.from('grids').insert([{
             date: key, title: name, conditions: newGrid.conditions, original_conditions: newGrid.originalConditions,
             brutal_conds: newGrid.brutalConds, status: 'daily', author_id: currentUser.id
         }]);
         if (error) showToast(error.message, "error"); else showToast('Grid published to Daily!', 'success');
-    } else if (currentUser) {
-        const { error } = await supabase.from('grids').insert([{
+    } else if (currentUser && dbClient) {
+        const { error } = await dbClient.from('grids').insert([{
             title: name, conditions: newGrid.conditions, original_conditions: newGrid.originalConditions,
             brutal_conds: newGrid.brutalConds, status: 'pending', author_id: currentUser.id
         }]);
