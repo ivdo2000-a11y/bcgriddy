@@ -1,30 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Battle Cats Grid Game</title>
 <link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-<div id="userProfileBtn" style="position: fixed; top: 20px; left: 20px; display: none; align-items: center; gap: 10px; background: #1a1b1e; padding: 8px 15px; border-radius: 20px; border: 1px solid #35383f; cursor: pointer; z-index: 2500;" onclick="openProfileModal()">
-    <img id="profileAvatar" src="" style="width: 32px; height: 32px; border-radius: 50%; background: #333;">
-    <span id="profileName" style="color: #fff; font-weight: bold; font-family: 'Segoe UI';">User</span>
-</div>
-<div class="modal" id="authModal">
-    <div class="modal-content" style="max-width: 400px; text-align: center;">
-        <h3>Login to Battle Cats Grid</h3>
-        <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" onclick="loginWithProvider('google')">Login with Google</button>
-        <button class="btn" style="width:100%; margin-bottom:10px; background:#5865f2; color:white;" onclick="loginWithProvider('discord')">Login with Discord</button>
-        
-        <div style="margin: 20px 0; color: #888;">— OR —</div>
-        
-        <input type="email" id="authEmail" class="search-input" placeholder="Email">
-        <input type="password" id="authPassword" class="search-input" placeholder="Password">
-        <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="loginWithEmail()">Login / Register</button>
+    <!-- PROFILE BUTTON (Top Left) -->
+    <div id="userProfileBtn" style="position: fixed; top: 20px; left: 20px; display: none; align-items: center; gap: 10px; background: #1a1b1e; padding: 8px 15px; border-radius: 20px; border: 1px solid #35383f; cursor: pointer; z-index: 2500;" onclick="openProfileModal()">
+        <img id="profileAvatar" src="" style="width: 32px; height: 32px; border-radius: 50%; background: #333; object-fit: cover;">
+        <span id="profileName" style="color: #fff; font-weight: bold; font-family: 'Segoe UI';">User</span>
     </div>
-</div>
+
     <!-- CALENDAR PAGE -->
     <div class="calendar-container" id="calendarPage">
         <div class="calendar-header" style="position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 20px; gap: 15px;">
@@ -35,12 +24,15 @@
             
             <div class="calendar-actions" style="position: absolute; top: 0; right: 0; display: flex; gap: 10px;">
                 <button class="action-btn" onclick="startEndlessMode()" title="Infinite Mode">
-                    <img src="infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                     <span style="display:none; font-size:24px;">🌀</span>
                 </button>
                 <button class="action-btn" onclick="openEditorPage()" title="Grid Editor">
-                    <img src="wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                     <span style="display:none; font-size:24px;">🛠️</span>
+                </button>
+                <button class="action-btn" id="adminBtn" style="display:none; background: #d33838;" onclick="openAdminPanel()" title="Admin Panel">
+                    <span style="font-size:24px;">👑</span>
                 </button>
             </div>
         </div>
@@ -52,13 +44,8 @@
         </div>
         <div class="calendar-grid" id="calendarGrid"></div>
     </div>
-	<div class="modal" id="adminPanelModal">
-    <div class="modal-content" style="max-width: 800px;">
-        <h3>Pending Grid Submissions</h3>
-        <div id="pendingGridsList"></div>
-    </div>
-</div>
-   	
+
+    <!-- GAME PAGE -->
     <div class="grid-page" id="gridPage">
         <div class="top-nav">
             <div style="display: flex; justify-content: flex-start; align-items: center; gap: 10px;">
@@ -77,11 +64,11 @@
             
             <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
                 <button class="action-btn" onclick="startEndlessMode()" title="Infinite Mode">
-                    <img src="infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                     <span style="display:none; font-size:24px;">🌀</span>
                 </button>
                 <button class="action-btn" onclick="openEditorPage()" title="Grid Editor">
-                    <img src="wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                     <span style="display:none; font-size:24px;">🛠️</span>
                 </button>
             </div>
@@ -208,6 +195,9 @@
                     <button class="btn btn-danger" onclick="resetCurrentGrid()">
                         🔄 <span data-bc="Reset" data-bc-size="16"></span>
                     </button>
+                    <button class="btn btn-primary" onclick="openSettingsModal()" style="margin-top: 10px;">
+                        ⚙️ Settings
+                    </button>
                 </div>
             </div>
         </div>
@@ -227,11 +217,11 @@
             
             <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
                 <button class="action-btn" onclick="startEndlessMode()" title="Infinite Mode">
-                    <img src="infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                     <span style="display:none; font-size:24px;">🌀</span>
                 </button>
                 <button class="action-btn" onclick="openEditorPage()" title="Grid Editor">
-                    <img src="wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                     <span style="display:none; font-size:24px;">🛠️</span>
                 </button>
             </div>
@@ -261,12 +251,79 @@
         </div>
     </div>
 
+    <!-- MODALS -->
+    
+    <!-- Auth Modal -->
+    <div class="modal" id="authModal">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <h3>Login to Battle Cats Grid</h3>
+            <button class="btn btn-primary" style="width:100%; margin-bottom:10px; padding: 15px;" onclick="loginWithProvider('google')">Login with Google</button>
+            <button class="btn" style="width:100%; margin-bottom:10px; padding: 15px; background:#5865f2; color:white; border:none; font-weight:bold; border-radius:8px; cursor:pointer;" onclick="loginWithProvider('discord')">Login with Discord</button>
+            
+            <div style="margin: 20px 0; color: #888;">— OR —</div>
+            
+            <input type="email" id="authEmail" class="search-input" placeholder="Email">
+            <input type="password" id="authPassword" class="search-input" placeholder="Password">
+            <button class="btn btn-primary" style="width:100%; margin-top:10px; padding: 15px;" onclick="loginWithEmail()">Login / Register</button>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div class="modal" id="profileModal">
+        <div class="modal-content" style="max-width: 600px; text-align: left;">
+            <h3 id="profModalTitle" style="text-align: center;">User Profile</h3>
+            <div id="profStats" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;"></div>
+            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px;" onclick="logout()">Logout</button>
+            <button class="btn btn-primary" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; margin-top:10px;" onclick="document.getElementById('profileModal').classList.remove('active')">Close</button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3>Settings</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <span style="color:#fff;">Lock Loadout</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="settingLockLoadout" onchange="toggleSetting('lockLoadout')">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <span style="color:#fff;">Lock Difficulty</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="settingLockDifficulty" onchange="toggleSetting('lockDifficulty')">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <hr style="border-color: #35383f; margin: 20px 0;">
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" style="flex: 1; padding: 10px;" onclick="exportSave()">📥 Export Save</button>
+                <label class="btn btn-primary" style="flex: 1; padding: 10px; text-align: center; cursor: pointer;">
+                    📤 Import Save
+                    <input type="file" id="importFile" style="display: none;" accept=".json" onchange="importSave(event)">
+                </label>
+            </div>
+            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; margin-top:20px;" onclick="document.getElementById('settingsModal').classList.remove('active')">Close</button>
+        </div>
+    </div>
+
+    <!-- Admin Panel Modal -->
+    <div class="modal" id="adminPanelModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h3>Pending Grid Submissions</h3>
+            <div id="pendingGridsList" style="display: flex; flex-direction: column; gap: 15px; max-height: 60vh; overflow-y: auto; margin-bottom: 20px;"></div>
+            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px;" onclick="document.getElementById('adminPanelModal').classList.remove('active')">Close</button>
+        </div>
+    </div>
+
+    <!-- Other Modals (equipSelect, unitModal, etc.) -->
     <div class="modal" id="equipSelectModal" style="z-index: 2500;">
         <div class="modal-content" style="max-width: 900px; width: 95%;">
             <h3 style="margin-bottom:10px;">Select Loadout</h3>
             <p style="text-align:center; font-size:14px; color:#a0a5b0; margin-bottom:20px;">Note: You cannot change equipment after starting the grid.</p>
             
-            <button class="btn btn-primary" style="width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; color: white; margin-bottom: 20px; font-size: 15px;" onclick="randomizeLoadout()">🎲 Random</button>
+            <button class="btn btn-primary" style="width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; color: white; margin-bottom: 20px; font-size: 15px;" onclick="randomizeLoadout()">🎲 Случайный лоудаут</button>
             
             <div class="equip-list-container">
                 <h4 style="color:#e09f3e; border-bottom:1px solid #4a4d55; padding-bottom:5px; margin-bottom:10px;">Cannons</h4>
