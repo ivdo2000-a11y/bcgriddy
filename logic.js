@@ -2,7 +2,7 @@
    SUPABASE AUTH & ONLINE INTEGRATION
    ========================================================================= */
 const SUPABASE_URL = 'https://ziqkrsstxxclbfmndniq.supabase.co'; 
-const SUPABASE_ANON_KEY = 'sb_publishable_lVwwOdGqcwWHT6Do7g61Pw_G8FEBciv'; // <-- ОБЯЗАТЕЛЬНО ВСТАВЬ СВОЙ КЛЮЧ ИЗ SUPABASE
+const SUPABASE_ANON_KEY = 'sb_publishable_lVwwOdGqcwWHT6Do7g61Pw_G8FEBciv';
 
 const STORAGE_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
 const IMG_UNITS = `${STORAGE_BASE}/imgunits/`;
@@ -16,7 +16,7 @@ let userProfile = null;
 let guideData = {};
 
 try {
-    if (window.supabase && SUPABASE_ANON_KEY !== 'ТВОЙ_ANON_KEY_СЮДА' && SUPABASE_ANON_KEY !== 'your-anon-key') {
+    if (window.supabase && SUPABASE_ANON_KEY !== 'sb_publishable_lVwwOdGqcwWHT6Do7g61Pw_G8FEBciv' && SUPABASE_ANON_KEY !== 'sb_publishable_lVwwOdGqcwWHT6Do7g61Pw_G8FEBciv') {
         dbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } else {
         console.warn("⚠️ Supabase keys not configured. Running in OFFLINE mode.");
