@@ -1,14 +1,19 @@
+/* =========================================================================
+   SUPABASE AUTH & ONLINE INTEGRATION
+   ========================================================================= */
 const SUPABASE_URL = 'https://ziqkrsstxxclbfmndniq.supabase.co'; 
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcWtyc3N0eHhjbGJmbW5kbmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMzc3NzMsImV4cCI6MjEwODYxMzc3M30.SExQGbLetwrb63-s6LzTTInqleNB7-byAzMpf6yIZZ8';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcWtyc3N0eHhjbGJmbW5kbmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMzc3NzMsImV4cCI6MjEwODYxMzc3M30.SExQGbLetwrb63-s6LzTTInqleNB7-byAzMpf6yIZZ8'; // <-- ОБЯЗАТЕЛЬНО ВСТАВЬ СВОЙ КЛЮЧ ИЗ SUPABASE
 
 const STORAGE_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
 const IMG_UNITS = `${STORAGE_BASE}/imgunits/`;
 const IMG_OTHER = `${STORAGE_BASE}/imgother/`;
+const IMG_ACH = `${STORAGE_BASE}/achpng/`;
 const CUSTOM_TXT = `${STORAGE_BASE}/custom/`;
 
 let dbClient = null;
 let currentUser = null;
 let userProfile = null;
+let guideData = {};
 
 try {
     if (window.supabase && SUPABASE_ANON_KEY !== 'ТВОЙ_ANON_KEY_СЮДА' && SUPABASE_ANON_KEY !== 'your-anon-key') {
@@ -22,7 +27,7 @@ try {
 
 async function initAuth() {
     if (!dbClient) {
-        document.getElementById('authModal').classList.remove('active'); 
+        updateProfileUI();
         return;
     }
     
@@ -40,10 +45,6 @@ async function initAuth() {
                 userProfile = newProf;
             }
             
-            document.getElementById('userProfileBtn').style.display = 'flex';
-            document.getElementById('profileAvatar').src = userProfile.avatar_url || `${IMG_OTHER}default_avatar.png`;
-            document.getElementById('profileName').textContent = userProfile.username;
-            
             if (userProfile.role === 'admin') {
                 document.getElementById('adminBtn').style.display = 'flex';
             } else {
@@ -53,54 +54,131 @@ async function initAuth() {
         } else {
             currentUser = null;
             userProfile = null;
-            document.getElementById('userProfileBtn').style.display = 'none';
             document.getElementById('adminBtn').style.display = 'none';
-            document.getElementById('authModal').classList.add('active');
         }
+        updateProfileUI();
     });
 }
 
-window.loginWithProvider = async (provider) => {
-    if (!dbClient) return showToast("Online features not configured.", "error");
-    await dbClient.auth.signInWithOAuth({ provider });
+function updateProfileUI() {
+    let guestAvatar = localStorage.getItem('bc_guest_avatar') || 'cat1.png';
+    let avatarSrc = currentUser && userProfile ? (userProfile.avatar_url || `${IMG_OTHER}default_avatar.png`) : `${IMG_OTHER}${guestAvatar}`;
+    let fallbackAvatar = currentUser && userProfile ? 'default_avatar.png' : guestAvatar;
+    let displayName = userProfile ? userProfile.username : 'Guest';
+
+    ['profileAvatar', 'profileAvatarSmall', 'profileAvatarGrid', 'profileAvatarEditor', 'profileAvatarAccount'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.src = avatarSrc;
+            el.onerror = function() { this.onerror=null; this.src=fallbackAvatar; };
+        }
+    });
+    
+    ['profileName', 'profileNameGrid', 'profileNameEditor', 'profileNameAccount'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = displayName;
+    });
+}
+
+window.selectGuestAvatar = (img) => {
+    localStorage.setItem('bc_guest_avatar', img);
+    updateProfileUI();
+    openAccountPage(); // Refresh account page to show new avatar
 };
 
+window.loginWithProvider = async (provider) => { if (dbClient) await dbClient.auth.signInWithOAuth({ provider }); };
 window.loginWithEmail = async () => {
-    if (!dbClient) return showToast("Online features not configured.", "error");
+    if (!dbClient) return;
     const email = document.getElementById('authEmail').value;
     const password = document.getElementById('authPassword').value;
     const { error } = await dbClient.auth.signInWithPassword({ email, password });
     if (error && error.message.includes("Invalid login")) {
         const { error: signUpError } = await dbClient.auth.signUp({ email, password });
         if (!signUpError) showToast("Check your email for confirmation!", "success");
-    } else if (!error) {
-        showToast("Logged in!", "success");
-    } else {
-        showToast(error.message, "error");
+    } else if (!error) showToast("Logged in!", "success");
+    else showToast(error.message, "error");
+};
+window.logout = async () => { if (dbClient) await dbClient.auth.signOut(); closeAccountPage(); };
+
+/* =========================================================================
+   ACCOUNT PAGE & STATS LOGIC
+   ========================================================================= */
+function getAchievements(history, usedBaseIds) {
+    const hasBrutal = history.some(h => h.completed && h.isBrutal);
+    const hasFlawless = history.some(h => h.completed && h.lives === 3);
+    const hasWin = history.some(h => h.completed && !h.is_loss);
+
+    return [
+        { id: '1', name: 'A New Challenger', desc: 'Clear the grid for the very first time!', progress: hasWin ? 100 : 0, global: hasWin ? 100.0 : 0.0 },
+        { id: '2', name: 'Flawless Capture', desc: 'Clear the grid without losing a single life.', progress: hasFlawless ? 100 : 0, global: hasFlawless ? 100.0 : 0.0 },
+        { id: '3', name: 'Brutal Slayer', desc: 'Clear a grid on Brutal difficulty.', progress: hasBrutal ? 100 : 0, global: hasBrutal ? 100.0 : 0.0 },
+        { id: '4', name: 'Collector', desc: 'Use 50 unique units in your grids.', progress: Math.min(100, (usedBaseIds.size / 50) * 100), global: 0.0 },
+        { id: '5', name: 'Combo Master', desc: 'Reach a combo of 5 or higher.', progress: 0, global: 0.0 }
+    ];
+}
+
+function checkAchievements() {
+    let history = Object.values(gridsData).filter(g => g.completed);
+    let usedBaseIds = new Set();
+    history.forEach(h => {
+        if (h.cells) h.cells.flat().forEach(cell => {
+            if (cell && cell.unitFullName) usedBaseIds.add(cell.unitFullName.split(' ')[0].split('-')[0]);
+        });
+    });
+
+    const all = getAchievements(history, usedBaseIds);
+    let unlockedStr = localStorage.getItem('bc_achievements') || '[]';
+    let unlocked = [];
+    try { unlocked = JSON.parse(unlockedStr); } catch(e) {}
+
+    let newlyUnlocked = false;
+    all.forEach(ach => {
+        if (ach.progress === 100 && !unlocked.includes(ach.id)) {
+            unlocked.push(ach.id);
+            newlyUnlocked = true;
+            showToast(ach.name, "achievement", ach.id); // Вызов уведомления
+        }
+    });
+
+    if (newlyUnlocked) {
+        localStorage.setItem('bc_achievements', JSON.stringify(unlocked));
     }
-};
+}
 
-window.logout = async () => {
-    if (dbClient) await dbClient.auth.signOut();
-    document.getElementById('profileModal').classList.remove('active');
-};
-
-window.openProfileModal = async () => {
-    if (!currentUser) return;
-    const modal = document.getElementById('profileModal');
-    const statsDiv = document.getElementById('profStats');
-    statsDiv.innerHTML = '<div style="color:#fff;">Loading stats...</div>';
-    modal.classList.add('active');
-
-    const { data: history } = await dbClient.from('user_grids').select('*').eq('user_id', currentUser.id);
+window.openAccountPage = async () => {
+    document.getElementById('calendarPage').style.display = 'none';
+    document.getElementById('gridPage').classList.remove('active');
+    document.getElementById('editorPage').classList.remove('active');
+    document.getElementById('accountPage').classList.add('active');
     
-    if (!history || history.length === 0) {
-        statsDiv.innerHTML = '<div style="color:#fff;">No games played yet.</div>';
+    const profileBtn = document.getElementById('userProfileBtn');
+    if (profileBtn) profileBtn.style.display = 'none';
+    
+    const container = document.getElementById('accountContent');
+    container.innerHTML = '<div style="text-align:center; color:#a0a5b0; padding:50px; font-size:20px;">Loading stats...</div>';
+    
+    let history = [];
+    if (currentUser && dbClient) {
+        const { data } = await dbClient.from('user_grids').select('*').eq('user_id', currentUser.id);
+        history = data || [];
+    } else {
+        history = Object.values(gridsData).filter(g => g.completed).map(g => ({
+            grid_date: g.date, title: g.title || (g.date.startsWith('endless') ? 'Endless Mode' : 'Unnamed'),
+            score: calculateFinalScoreForGrid(g, g.isLoss).total,
+            completed: g.completed, is_loss: g.isLoss,
+            cannon: g.cannon, style: g.style, foundation: g.foundation,
+            cells: g.cells, timestamp: Date.now(),
+            lives: g.lives, cannonUses: g.cannonUses, isBrutal: g.isBrutal
+        }));
+    }
+
+    if (history.length === 0) {
+        container.innerHTML = '<div style="text-align:center; color:#a0a5b0; padding:50px; font-size:20px;">No games played yet. Go solve some grids!</div>';
         return;
     }
 
     let totalScore = 0, wins = 0;
-    let favCannon = {}, favStyle = {}, favFoundation = {}, favUnit = {};
+    let favCannon = {}, favStyle = {}, favFoundation = {}, unitCounts = {}, usedBaseIds = new Set();
     
     history.forEach(h => {
         totalScore += h.score || 0;
@@ -110,65 +188,357 @@ window.openProfileModal = async () => {
         if (h.foundation) favFoundation[h.foundation] = (favFoundation[h.foundation] || 0) + 1;
         if (h.cells) {
             h.cells.flat().forEach(cell => {
-                if (cell && cell.unitName) {
-                    favUnit[cell.unitName] = (favUnit[cell.unitName] || 0) + 1;
+                if (cell && cell.unitFullName) {
+                    const baseId = cell.unitFullName.split(' ')[0].split('-')[0];
+                    usedBaseIds.add(baseId);
+                    unitCounts[baseId] = (unitCounts[baseId] || 0) + 1;
                 }
             });
         }
     });
 
-    const getTop = (obj) => {
-        if (Object.keys(obj).length === 0) return "None";
+    const getTopKey = (obj, fallback) => {
+        if (Object.keys(obj).length === 0) return fallback;
         return Object.keys(obj).reduce((a, b) => obj[a] > obj[b] ? a : b);
     };
 
     const winrate = Math.round((wins / history.length) * 100);
     const avgScore = Math.round(totalScore / history.length);
+    const topCannon = getTopKey(favCannon, 'Default');
+    const topStyle = getTopKey(favStyle, 'Default');
+    const topFoundation = getTopKey(favFoundation, 'Default');
+    const sortedUnits = Object.keys(unitCounts).sort((a, b) => unitCounts[b] - unitCounts[a]).slice(0, 6);
 
-    statsDiv.innerHTML = `
-        <div style="background:#1a1b1e; padding:15px; border-radius:8px;">
-            <div style="color:#a0a5b0; font-size:12px;">Games Played</div>
-            <div style="color:#fff; font-size:20px; font-weight:bold;">${history.length}</div>
+    let bestGrid = [...history].sort((a, b) => b.score - a.score)[0];
+    let recentGrid = [...history].sort((a, b) => {
+        const timeA = a.grid_date.startsWith('endless') ? parseInt(a.grid_date.split('_')[1]) : new Date(a.grid_date).getTime();
+        const timeB = b.grid_date.startsWith('endless') ? parseInt(b.grid_date.split('_')[1]) : new Date(b.grid_date).getTime();
+        return timeB - timeA;
+    })[0];
+
+    let accountCreated = 'Oct 27, 2026';
+    if (currentUser?.created_at) accountCreated = new Date(currentUser.created_at).toLocaleDateString();
+    else {
+        const localCreated = localStorage.getItem('bc_guest_created');
+        if (!localCreated) { localStorage.setItem('bc_guest_created', new Date().toISOString()); accountCreated = new Date().toLocaleDateString(); }
+        else accountCreated = new Date(localCreated).toLocaleDateString();
+    }
+
+    const renderMiniGrid = (cells) => {
+        if (!cells) return '';
+        let html = '<div class="mini-grid">';
+        for (let r = 0; r < 3; r++) {
+            for (let c = 0; c < 3; c++) {
+                const cell = cells[r][c];
+                let bg = '#2c2e36';
+                if (cell) bg = getRarityColor(cell.rarity);
+                html += `<div class="mini-cell" style="background:${bg}"></div>`;
+            }
+        }
+        html += '</div>';
+        return html;
+    };
+
+    // ПОЛУЧЕНИЕ ДОСТИЖЕНИЙ
+    const allMedals = getAchievements(history, usedBaseIds);
+    const earnedMedals = allMedals.filter(m => m.progress === 100).reverse(); // Сначала самые новые (по ID)
+    const displayMedals = earnedMedals.slice(0, 4);
+
+    let guestAvatar = localStorage.getItem('bc_guest_avatar') || 'cat1.png';
+    let avatarSrc = currentUser && userProfile ? (userProfile.avatar_url || `${IMG_OTHER}default_avatar.png`) : `${IMG_OTHER}${guestAvatar}`;
+    let fallbackAvatar = currentUser && userProfile ? 'default_avatar.png' : guestAvatar;
+
+    // 72 Аватарки (8 рядов по 9 штук)
+    let guestPickerHtml = '';
+    if (!currentUser) {
+        guestPickerHtml = `<div id="avatarPicker" style="display: none; margin-top: 15px; text-align: center; background: #1a1b1e; padding: 15px; border-radius: 12px; border: 1px solid #35383f;">
+            <div style="color: #a0a5b0; font-size: 14px; margin-bottom: 10px; font-weight: bold;">Select Avatar</div>
+            <div style="display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; justify-items: center; max-width: 500px; margin: 0 auto;">`;
+        for (let i = 1; i <= 72; i++) {
+            guestPickerHtml += `<img src="${IMG_OTHER}cat${i}.png" onerror="this.onerror=null; this.src='cat${i}.png'" style="width: 40px; height: 40px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; object-fit: cover; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.1)'; this.style.borderColor='#5865f2'" onmouseout="this.style.transform='scale(1)'; this.style.borderColor='transparent'" onclick="selectGuestAvatar('cat${i}.png')">`;
+        }
+        guestPickerHtml += `</div></div>`;
+    }
+
+    let sections = Object.keys(guideData).length > 0 ? guideData : { "All Cats": Object.keys(UNITS_DATA).filter(k => k.split(' ')[0].endsWith('-0')).map(k => k.split(' ')[0].split('-')[0]) };
+    let collectionHtml = '';
+    for (let secName in sections) {
+        collectionHtml += `<div style="font-weight:bold; color:#fff; margin-top:20px; margin-bottom:10px; border-bottom:1px solid #35383f; padding-bottom:5px;">${secName}</div>`;
+        collectionHtml += `<div class="collection-grid">`;
+        for (let baseId of sections[secName]) {
+            let formKey = Object.keys(UNITS_DATA).find(k => k.startsWith(baseId + '-0')) || Object.keys(UNITS_DATA).find(k => k.startsWith(baseId + '-'));
+            if (!formKey) continue;
+            let unit = UNIT_MAP[formKey];
+            let isOwned = usedBaseIds.has(baseId);
+            collectionHtml += `
+                <div class="collection-item ${isOwned ? '' : 'not-owned'}" onclick="showUnitInfo('${formKey}')">
+                    <img src="${IMG_UNITS}${baseId}.png" onerror="this.onerror=null; this.src='images/${baseId}.png';">
+                    <div class="name">${unit.name}</div>
+                </div>
+            `;
+        }
+        collectionHtml += `</div>`;
+    }
+
+    container.innerHTML = `
+        <!-- Top Banner -->
+        <div style="display: flex; align-items: center; gap: 20px; background: #1a1b1e; border: 1px solid #35383f; border-radius: 15px; padding: 20px; margin-bottom: 20px; flex-wrap: wrap;">
+            <img src="${avatarSrc}" onclick="toggleAvatarPicker()" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #5865f2; object-fit: cover; cursor: pointer;">
+            <div style="flex: 1;">
+                <h2 style="margin: 0; color: #fff; font-size: 28px;">${userProfile?.username || 'Guest'}</h2>
+                <div style="color: #a0a5b0; font-size: 14px; margin-top: 5px;">Created: ${accountCreated}</div>
+                ${guestPickerHtml}
+            </div>
+            <div style="display: flex; gap: 10px;">
+                ${currentUser ? `<button class="btn btn-danger" style="padding:10px 20px;" onclick="logout()">Logout</button>` : `<button class="btn btn-primary" style="padding:10px 20px;" onclick="document.getElementById('authModal').classList.add('active')">Login</button>`}
+            </div>
         </div>
-        <div style="background:#1a1b1e; padding:15px; border-radius:8px;">
-            <div style="color:#a0a5b0; font-size:12px;">Winrate</div>
-            <div style="color:#4caf50; font-size:20px; font-weight:bold;">${winrate}%</div>
+
+        <!-- Stats Row -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px;">
+            <div class="stat-card"><div style="color:#a0a5b0; font-size: 14px; text-transform: uppercase;">Games Played</div><div class="stat-value">${history.length}</div></div>
+            <div class="stat-card"><div style="color:#a0a5b0; font-size: 14px; text-transform: uppercase;">Winrate</div><div class="stat-value" style="color:#4caf50;">${winrate}%</div></div>
+            <div class="stat-card"><div style="color:#a0a5b0; font-size: 14px; text-transform: uppercase;">Avg Score</div><div class="stat-value" style="color:#ffd700;">${avgScore.toLocaleString()}</div></div>
         </div>
-        <div style="background:#1a1b1e; padding:15px; border-radius:8px;">
-            <div style="color:#a0a5b0; font-size:12px;">Average Score</div>
-            <div style="color:#ffd700; font-size:20px; font-weight:bold;">${avgScore.toLocaleString()}</div>
+
+        <!-- Loadout & Units -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <div class="stat-card" style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 30px;">
+                <div style="text-align: left;">
+                    <div style="color:#a0a5b0; font-size: 14px; text-transform: uppercase; margin-bottom: 15px;">Favorite Loadout</div>
+                    <div style="color: #e09f3e; font-weight: bold; margin-bottom: 5px;">${CANNONS[topCannon]?.name || 'Default'}: ${favCannon[topCannon] || 0} picks</div>
+                    <div style="color: #00CED1; font-weight: bold; margin-bottom: 5px;">${STYLES[topStyle]?.name || 'Default'}: ${favStyle[topStyle] || 0} picks</div>
+                    <div style="color: #9370DB; font-weight: bold;">${FOUNDATIONS[topFoundation]?.name || 'Default'}: ${favFoundation[topFoundation] || 0} picks</div>
+                </div>
+                <div class="loadout-container" style="transform: scale(1.1); margin: 0;">
+                    <img class="loadout-foundation" src="${getEquipImage('foundation', topFoundation)}" onerror="this.onerror=null; this.src='foundation_${topFoundation.toLowerCase()}.png';">
+                    <img class="loadout-style" src="${getEquipImage('style', topStyle)}" onerror="this.onerror=null; this.src='style_${topStyle.toLowerCase()}.png';">
+                    <img class="loadout-cannon" src="${getEquipImage('cannon', topCannon)}" onerror="this.onerror=null; this.src='cannon_${topCannon.toLowerCase()}.png';">
+                </div>
+            </div>
+            
+            <div class="stat-card" style="display: flex; flex-direction: column; align-items: center;">
+                <div style="color:#a0a5b0; font-size: 14px; text-transform: uppercase; margin-bottom: 15px;">Favorite Units</div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%;">
+                    ${sortedUnits.map(baseId => {
+                        const formKey = Object.keys(UNITS_DATA).filter(k => k.startsWith(baseId + '-')).pop() || `${baseId}-0`;
+                        const name = UNIT_MAP[formKey]?.name || 'Unknown';
+                        return `<div style="background: #23252b; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #35383f;">
+                                <img src="${IMG_UNITS}${baseId}.png" onerror="this.onerror=null; this.src='images/${baseId}.png';" style="width: 40px; height: 40px; object-fit: contain;">
+                                <div style="color:#fff; font-size: 11px; font-weight: bold; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
+                                <div style="color:#a0a5b0; font-size: 10px;">Picks: ${unitCounts[baseId]}</div>
+                            </div>`;
+                    }).join('')}
+                </div>
+            </div>
         </div>
-        <div style="background:#1a1b1e; padding:15px; border-radius:8px;">
-            <div style="color:#a0a5b0; font-size:12px;">Favorite Unit</div>
-            <div style="color:#00CED1; font-size:18px; font-weight:bold;">${getTop(favUnit)}</div>
+
+        <!-- Best & Recent Grids -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <div class="grid-thumb-container" onclick="openGridFromAccount('${bestGrid.grid_date}')">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                    <div>
+                        <div style="color:#a0a5b0; font-size: 14px; text-transform: uppercase; margin-bottom: 5px;">Best Score</div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="font-size: 32px; font-weight: bold; color: ${getGrade(bestGrid.score, bestGrid.isBrutal).color};">${getGrade(bestGrid.score, bestGrid.isBrutal).letter}</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #ffd700;">${bestGrid.score.toLocaleString()}</div>
+                        </div>
+                        <div style="color: #fff; font-size: 14px; margin-top: 5px;">${!bestGrid.grid_date.startsWith('endless') ? `#${getGridNumber(bestGrid.grid_date)} ` : ''}${bestGrid.title} ${bestGrid.isBrutal ? '<span style="color:#ff4757; font-weight:bold;">(Brutal)</span>' : ''}</div>
+                    </div>
+                    <div style="text-align: right; color: #a0a5b0; font-size: 12px;">
+                        <div>${CANNONS[bestGrid.cannon]?.name || 'Default'}</div><div>${STYLES[bestGrid.style]?.name || 'Default'}</div><div>${FOUNDATIONS[bestGrid.foundation]?.name || 'Default'}</div>
+                        <div style="margin-top: 5px; color: #fff;">Lives: ${bestGrid.lives} | Uses: ${bestGrid.cannonUses}</div>
+                    </div>
+                </div>
+                ${renderMiniGrid(bestGrid.cells)}
+                <button class="btn btn-primary" style="width: 100%; margin-top: 15px; padding: 10px;" onclick="event.stopPropagation(); showHistory('best')">View Top 15</button>
+            </div>
+            
+            <div class="grid-thumb-container" onclick="openGridFromAccount('${recentGrid.grid_date}')">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                    <div>
+                        <div style="color:#a0a5b0; font-size: 14px; text-transform: uppercase; margin-bottom: 5px;">Most Recent</div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="font-size: 32px; font-weight: bold; color: ${getGrade(recentGrid.score, recentGrid.isBrutal).color};">${getGrade(recentGrid.score, recentGrid.isBrutal).letter}</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #fff;">${recentGrid.score.toLocaleString()}</div>
+                        </div>
+                        <div style="color: #fff; font-size: 14px; margin-top: 5px;">${!recentGrid.grid_date.startsWith('endless') ? `#${getGridNumber(recentGrid.grid_date)} ` : ''}${recentGrid.title} ${recentGrid.isBrutal ? '<span style="color:#ff4757; font-weight:bold;">(Brutal)</span>' : ''}</div>
+                    </div>
+                    <div style="text-align: right; color: #a0a5b0; font-size: 12px;">
+                        <div>${CANNONS[recentGrid.cannon]?.name || 'Default'}</div><div>${STYLES[recentGrid.style]?.name || 'Default'}</div><div>${FOUNDATIONS[recentGrid.foundation]?.name || 'Default'}</div>
+                        <div style="margin-top: 5px; color: #fff;">Lives: ${recentGrid.lives} | Uses: ${recentGrid.cannonUses}</div>
+                    </div>
+                </div>
+                ${renderMiniGrid(recentGrid.cells)}
+                <button class="btn btn-primary" style="width: 100%; margin-top: 15px; padding: 10px;" onclick="event.stopPropagation(); showHistory('recent')">View Last 15</button>
+            </div>
         </div>
-        <div style="grid-column: span 2; background:#1a1b1e; padding:15px; border-radius:8px;">
-            <div style="color:#a0a5b0; font-size:12px; margin-bottom:5px;">Favorite Loadout</div>
-            <div style="color:#fff; font-size:14px;">Cannon: <span style="color:#e09f3e; font-weight:bold;">${getTop(favCannon)}</span></div>
-            <div style="color:#fff; font-size:14px;">Style: <span style="color:#00CED1; font-weight:bold;">${getTop(favStyle)}</span></div>
-            <div style="color:#fff; font-size:14px;">Foundation: <span style="color:#9370DB; font-weight:bold;">${getTop(favFoundation)}</span></div>
+
+        <!-- Achievements (Medals) -->
+        <div style="background: #1a1b1e; border: 1px solid #35383f; border-radius: 15px; padding: 20px; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="margin: 0; color: #fff; display: flex; align-items: center; gap: 10px;">
+                    <img src="${IMG_ACH}ach1.png" onerror="this.onerror=null; this.src='ach1.png';" style="width: 24px; height: 24px;"> Meow Medals
+                </h3>
+                <button class="btn btn-default" style="padding: 8px 15px;" onclick="showAllMedals()">View All Medals</button>
+            </div>
+            <div style="color: #a0a5b0; font-size: 14px; margin-bottom: 15px;">${earnedMedals.length} of ${allMedals.length} unlocked</div>
+            
+            ${displayMedals.length === 0 ? '<div style="color:#a0a5b0; font-size:14px;">No achievements earned yet.</div>' : 
+                displayMedals.map(m => `
+                <div class="achievement-row">
+                    <img src="${IMG_ACH}ach${m.id}.png" onerror="this.onerror=null; this.src='ach${m.id}.png';" class="achievement-icon">
+                    <div class="achievement-info">
+                        <div class="achievement-title"><span style="color:#a0a5b0; font-size:12px; margin-right:5px;">#00${m.id}</span> ${m.name}</div>
+                        <div class="achievement-desc">${m.desc}</div>
+                    </div>
+                    <div class="achievement-progress-container">
+                        <div style="font-size: 12px; color: #ffd700; font-weight: bold;">GLOBAL %</div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${m.global}%;"></div></div>
+                        <div style="font-size: 12px; color: #a0a5b0; margin-top: 3px;">${m.global.toFixed(1)}%</div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+
+        <!-- Cat Guide -->
+        <div style="background: #1a1b1e; border: 1px solid #35383f; border-radius: 15px; padding: 20px;">
+            <h3 style="margin-top: 0; color: #fff; text-align: center; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                <img src="${IMG_OTHER}guide.png" onerror="this.onerror=null; this.src='guide.png';" style="width: 24px; height: 24px;"> Cat Guide
+            </h3>
+            <div style="color: #a0a5b0; text-align: center; font-size: 14px; margin-bottom: 15px;">
+                Won with ${usedBaseIds.size} / ${Object.keys(UNITS_DATA).filter(k => k.split(' ')[0].endsWith('-0')).length} cats
+            </div>
+            ${collectionHtml}
         </div>
     `;
 };
 
-/* =========================================================================
-   SETTINGS & BACKUP
-   ========================================================================= */
-window.openSettingsModal = () => {
-    document.getElementById('settingsModal').classList.add('active');
-    if (userProfile && userProfile.settings) {
-        document.getElementById('settingLockLoadout').checked = userProfile.settings.lockLoadout || false;
-        document.getElementById('settingLockDifficulty').checked = userProfile.settings.lockDifficulty || false;
+window.toggleAvatarPicker = () => {
+    const picker = document.getElementById('avatarPicker');
+    if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+};
+
+window.closeAccountPage = () => {
+    document.getElementById('accountPage').classList.remove('active');
+    document.getElementById('calendarPage').style.display = 'block';
+    document.getElementById('userProfileBtn').style.display = 'flex';
+};
+
+window.openGridFromAccount = (dateKey) => {
+    closeAccountPage();
+    if (dateKey.startsWith('endless')) {
+        // If it's an old endless run, we can't resume it easily if it's completed.
+        // Just open it as a static grid or start a new one.
+        openGrid(dateKey); 
+    } else {
+        openGrid(dateKey);
     }
 };
 
+window.showHistory = (type) => {
+    let history = Object.values(gridsData).filter(g => g.completed);
+    if (type === 'best') {
+        history.sort((a, b) => calculateFinalScoreForGrid(b).total - calculateFinalScoreForGrid(a).total);
+        document.getElementById('historyTitle').textContent = 'Top 15 Best Scores';
+    } else {
+        history.sort((a, b) => new Date(b.date) - new Date(a.date));
+        document.getElementById('historyTitle').textContent = 'Last 15 Solved Grids';
+    }
+    history = history.slice(0, 15);
+    
+    const container = document.getElementById('historyList');
+    container.innerHTML = '';
+    
+    history.forEach(g => {
+        const score = calculateFinalScoreForGrid(g).total;
+        let miniGrid = '<div class="mini-grid" style="margin: 0 auto;">';
+        for (let r = 0; r < 3; r++) {
+            for (let c = 0; c < 3; c++) {
+                const cell = g.cells[r][c];
+                let bg = '#2c2e36';
+                if (cell) bg = getRarityColor(cell.rarity);
+                miniGrid += `<div class="mini-cell" style="background:${bg}"></div>`;
+            }
+        }
+        miniGrid += '</div>';
+        
+        container.innerHTML += `
+            <div class="grid-thumb-container" onclick="document.getElementById('historyModal').classList.remove('active'); openGridFromAccount('${g.date}')">
+                ${miniGrid}
+                <div style="color:#ffd700; font-size: 20px; font-weight: bold; margin-top: 10px; text-align: center;">${score.toLocaleString()}</div>
+                <div style="color:#fff; font-size: 12px; margin-top: 5px; text-align: center;">${g.title || (g.date.startsWith('endless') ? 'Endless' : 'Unnamed')}</div>
+            </div>
+        `;
+    });
+    document.getElementById('historyModal').classList.add('active');
+};
+
+window.showAllMedals = () => {
+    let history = Object.values(gridsData).filter(g => g.completed);
+    let usedBaseIds = new Set();
+    history.forEach(h => {
+        if (h.cells) h.cells.flat().forEach(cell => {
+            if (cell && cell.unitFullName) usedBaseIds.add(cell.unitFullName.split(' ')[0].split('-')[0]);
+        });
+    });
+
+    const all = getAchievements(history, usedBaseIds);
+    const earned = all.filter(a => a.progress === 100);
+    const unearned = all.filter(a => a.progress < 100);
+    const sorted = [...earned, ...unearned]; // Сначала полученные, потом остальные
+
+    const container = document.getElementById('allMedalsList');
+    container.innerHTML = sorted.map(m => {
+        const isEarned = m.progress === 100;
+        const opacity = isEarned ? '1' : '0.4'; // Затемнение для неполученных
+        const grayscale = isEarned ? 'none' : 'grayscale(100%)';
+        return `
+        <div class="achievement-row" style="opacity: ${opacity}; filter: ${grayscale};">
+            <img src="${IMG_ACH}ach${m.id}.png" onerror="this.onerror=null; this.src='ach${m.id}.png';" class="achievement-icon">
+            <div class="achievement-info">
+                <div class="achievement-title"><span style="color:#a0a5b0; font-size:12px; margin-right:5px;">#00${m.id}</span> ${m.name}</div>
+                <div class="achievement-desc">${m.desc}</div>
+            </div>
+            <div class="achievement-progress-container">
+                <div style="font-size: 12px; color: #ffd700; font-weight: bold;">GLOBAL %</div>
+                <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${m.global}%;"></div></div>
+                <div style="font-size: 12px; color: #a0a5b0; margin-top: 3px;">${m.global.toFixed(1)}%</div>
+            </div>
+        </div>
+        `;
+    }).join('');
+    document.getElementById('allMedalsModal').classList.add('active');
+};
+/* =========================================================================
+   SETTINGS
+   ========================================================================= */
+window.openSettingsModal = () => {
+    document.getElementById('settingsModal').classList.add('active');
+    let settings = null;
+    if (currentUser && userProfile && userProfile.settings) {
+        settings = userProfile.settings;
+    } else {
+        settings = JSON.parse(localStorage.getItem('bc_settings') || '{}');
+    }
+    document.getElementById('settingLockLoadout').checked = settings.lockLoadout || false;
+    document.getElementById('settingLockDifficulty').checked = settings.lockDifficulty || false;
+};
+
 window.toggleSetting = async (key) => {
-    if (!currentUser || !dbClient) return showToast("Login required to save settings.", "error");
     const val = document.getElementById('setting' + key.charAt(0).toUpperCase() + key.slice(1)).checked;
-    if (!userProfile.settings) userProfile.settings = {};
-    userProfile.settings[key] = val;
-    await dbClient.from('profiles').update({ settings: userProfile.settings }).eq('id', currentUser.id);
-    showToast("Setting saved!", "success");
+    
+    if (currentUser && dbClient) {
+        if (!userProfile.settings) userProfile.settings = {};
+        userProfile.settings[key] = val;
+        await dbClient.from('profiles').update({ settings: userProfile.settings }).eq('id', currentUser.id);
+        showToast("Setting saved to Cloud!", "success");
+    } else {
+        const localSettings = JSON.parse(localStorage.getItem('bc_settings') || '{}');
+        localSettings[key] = val;
+        localStorage.setItem('bc_settings', JSON.stringify(localSettings));
+        showToast("Setting saved locally!", "success");
+    }
 };
 
 window.exportSave = () => {
@@ -197,73 +567,10 @@ window.importSave = (event) => {
 };
 
 /* =========================================================================
-   ADMIN PANEL
-   ========================================================================= */
-window.openAdminPanel = async () => {
-    if (!userProfile || userProfile.role !== 'admin' || !dbClient) return;
-    document.getElementById('adminPanelModal').classList.add('active');
-    const list = document.getElementById('pendingGridsList');
-    list.innerHTML = '<div style="color:#fff;">Loading...</div>';
-    
-    const { data: grids } = await dbClient.from('grids')
-        .select('*, profiles(username, avatar_url)')
-        .eq('status', 'pending');
-        
-    list.innerHTML = '';
-    if (!grids || grids.length === 0) {
-        list.innerHTML = '<div style="color:#fff;">No pending grids.</div>';
-        return;
-    }
-    
-    grids.forEach(g => {
-        const div = document.createElement('div');
-        div.className = 'equip-item';
-        div.style.height = 'auto';
-        div.style.padding = '20px';
-        div.innerHTML = `
-            <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px; border-bottom: 1px solid #4a4d55; padding-bottom: 15px;">
-                <img src="${g.profiles.avatar_url || IMG_OTHER + 'default_avatar.png'}" style="width:50px;height:50px;border-radius:50%; background:#333; object-fit:cover;">
-                <div style="text-align:left;">
-                    <div style="color:#fff; font-size: 20px; font-weight:bold;">${g.title}</div>
-                    <div style="color:#a0a5b0; font-size:14px;">by ${g.profiles.username}</div>
-                </div>
-            </div>
-            <div style="display:flex; gap:10px;">
-                <button class="btn btn-primary" onclick="approveGrid('${g.id}', 'daily')">Accept as Daily</button>
-                <button class="btn btn-primary" style="background:#4caf50;" onclick="approveGrid('${g.id}', 'endless')">Accept as Endless</button>
-                <button class="btn btn-danger" onclick="approveGrid('${g.id}', 'rejected')">Reject</button>
-            </div>
-        `;
-        list.appendChild(div);
-    });
-};
-
-window.approveGrid = async (id, newStatus) => {
-    if (!dbClient) return;
-    let updateObj = { status: newStatus };
-    if (newStatus === 'daily') {
-        const dateStr = prompt("Enter date for this Daily Grid (YYYY-MM-DD):");
-        if (!dateStr) return;
-        updateObj.date = dateStr;
-    } else {
-        updateObj.date = null;
-    }
-    
-    const { error } = await dbClient.from('grids').update(updateObj).eq('id', id);
-    if (error) {
-        showToast(error.message, "error");
-    } else {
-        showToast("Grid updated successfully!", "success");
-        openAdminPanel(); 
-    }
-};
-
-/* =========================================================================
    BASE GAME LOGIC
    ========================================================================= */
 function escapeHTML(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function bcText(str, opts = {}) { if (str === undefined || str === null) return ''; const size = opts.size || 16; const sizeStyle = size !== 16 ? `font-size:${size}px;` : ''; return `<span class="bc-text" style="${sizeStyle}">${escapeHTML(str)}</span>`; }
-
 function formatConditionName(str) {
     if (!str) return '';
     let safe = escapeHTML(str);
@@ -310,31 +617,46 @@ function formatConditionName(str) {
     });
     return safe;
 }
-
 function bcCondText(str, size = 15) { if (!str) return ''; const sizeStyle = size !== 16 ? `font-size:${size}px;` : ''; return `<span class="bc-text" style="${sizeStyle}">${formatConditionName(str)}</span>`; }
 function refreshAllBC(root = document) { root.querySelectorAll('[data-bc]').forEach(el => { const size = parseFloat(el.dataset.bcSize || '16'); el.innerHTML = bcText(el.dataset.bc, { size }); }); }
-
-function showToast(msg, type = '') {
+function showToast(msg, type = '', achId = null) {
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div'); container.id = 'toast-container';
-        container.style.position = 'fixed'; container.style.bottom = '20px'; container.style.right = '20px';
+        container.style.position = 'fixed'; container.style.top = '80px'; container.style.right = '20px'; // Сдвинуто наверх
         container.style.display = 'flex'; container.style.flexDirection = 'column'; container.style.gap = '10px';
-        container.style.zIndex = '3000'; container.style.pointerEvents = 'none';
+        container.style.zIndex = '5000'; container.style.pointerEvents = 'none';
         document.body.appendChild(container);
     }
     if (container.children.length >= 5) container.firstElementChild.remove();
     const t = document.createElement('div');
     t.className = `toast ${type}`;
-    t.innerHTML = `<span style="font-weight: 300;">${escapeHTML(msg)}</span><span class="toast-close" onclick="this.parentElement.remove()">×</span><div class="toast-progress"></div>`;
+    
+    if (achId) {
+        t.style.border = '2px solid #ffd700';
+        t.style.background = '#2c2e36';
+        t.innerHTML = `<div style="display:flex; align-items:center; gap:15px;">
+            <img src="${IMG_ACH}ach${achId}.png" onerror="this.onerror=null; this.src='ach${achId}.png';" style="width:50px; height:50px; border-radius:8px;">
+            <div>
+                <div style="color:#ffd700; font-weight:bold; font-size:14px; text-transform:uppercase;">Achievement Unlocked!</div>
+                <div style="color:#fff; font-size:16px; font-weight:bold;">${escapeHTML(msg)}</div>
+            </div>
+        </div>
+        <span class="toast-close" onclick="this.parentElement.remove()">×</span>
+        <div class="toast-progress" style="background:#ffd700;"></div>`;
+    } else {
+        t.innerHTML = `<span style="font-weight: 300;">${escapeHTML(msg)}</span><span class="toast-close" onclick="this.parentElement.remove()">×</span><div class="toast-progress"></div>`;
+    }
+    
     container.appendChild(t);
-    setTimeout(() => { if(t.parentElement) t.remove(); }, 2500);
+    setTimeout(() => { if(t.parentElement) t.remove(); }, 4000); // Достижения висят 4 секунды
 }
 
 let PROCESSED_UNITS = []; let UNIT_MAP = {}; let baseHasTalents = {};
 let gridsData = {}; let currentGrid = null; let currentDate = new Date();
 let currentLife = 3; const MAX_LIVES = 5; let currentRow = null, currentCol = null;
 let customCriteria = {}, customCategoryMap = {}, customTooltips = {}, customNegations = {}; 
+let customManualOnly = {};
 let allConditions = [], sortedConditions = [];
 let currentCannon = 'Default', currentStyle = 'Default', currentFoundation = 'Default';
 let cannonUsesLeft = 1, pendingCannonAction = null, shieldedCells = [];
@@ -349,7 +671,17 @@ let bitmaskCache = new Map(), unitIndexMap = new Map(), baseIdFormMasks = new Ma
 function clearValidUnitsCache() { validUnitsCache.clear(); conditionCache.clear(); }
 function hashStringToSeed(str) { let h = 2166136261 >>> 0; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
 function createSeededRandom(seedStr) { let h = hashStringToSeed(seedStr); return function() { h ^= h >>> 16; h = Math.imul(h, 2246822507) >>> 0; h ^= h >>> 13; h = Math.imul(h, 3266489909) >>> 0; h ^= h >>> 16; return (h >>> 0) / 4294967296; }; }
-function getStableConditionList() { return [...allConditions].sort((a, b) => { const catA = getConditionCategory(a) || ""; const catB = getConditionCategory(b) || ""; if (catA !== catB) return catA < catB ? -1 : 1; return a < b ? -1 : (a > b ? 1 : 0); }); }
+function getStableConditionList(includeManualOnly = false) {
+    let list = includeManualOnly
+        ? [...allConditions]
+        : allConditions.filter(c => !customManualOnly[c]);
+    return list.sort((a, b) => {
+        const catA = getConditionCategory(a) || "";
+        const catB = getConditionCategory(b) || "";
+        if (catA !== catB) return catA < catB ? -1 : 1;
+        return a < b ? -1 : (a > b ? 1 : 0);
+    });
+}
 
 const FOUNDATIONS = { Default: { name: "Default Foundation", desc: "Every 3 correct answers, a cell blinks pink. Filling it heals 1 life." }, SlowBeam: { name: "Slow Beam Foundation", desc: "Doubles the time before time penalties begin." }, IronWall: { name: "Iron Wall Foundation", desc: "The first instance of damage is completely ignored. Places a shield on your first wrong cell." }, Thunderbolt: { name: "Thunderbolt Foundation", desc: "Every few answers, a cell blinks yellow. Filling it gives +1 cannon use." }, Waterblast: { name: "Waterblast Foundation", desc: "Halves the score penalty for using cannon charges." }, HolyBlast: { name: "Holy Blast Foundation", desc: "Completing the grid without damage upgrades the WORST unit to Legend." }, Breakerblast: { name: "Breakerblast Foundation", desc: "When dropping to 1 life, automatically fire your cannon at a random cell for free." }, Curseblast: { name: "Curseblast Foundation", desc: "Halves the score penalty for losing lives." } };
 const STYLES = { Default: { name: "Default Style", desc: "x5 points for Normal rarity answers." }, SlowBeam: { name: "Slow Beam Style", desc: "Percentages do not affect scoring. Shows real-time timer and bonus score." }, IronWall: { name: "Iron Wall Style", desc: "Gain +2 starting lives." }, Thunderbolt: { name: "Thunderbolt Style", desc: "Correct answers start a 5s combo timer. Max combo grants extra score." }, Waterblast: { name: "Waterblast Style", desc: "Always show the number of valid answers in cells." }, HolyBlast: { name: "Holy Blast Style", desc: "Manually placed worst variants are automatically upgraded to Legend rarity." }, Breakerblast: { name: "Breakerblast Style", desc: "Placing a Best answer grants +1 cannon charge." }, Curseblast: { name: "Curseblast Style", desc: "Use lives to buy extra cannon charges. Can't kill you, but won't let you buy more when at 1 HP. Cost scales with starting charges" } };
@@ -410,6 +742,10 @@ function isGridSolvableForCondition(rows, cols, brutalConds = null) {
 }
 
 function buildUnits() {
+    if (typeof UNITS_DATA === 'undefined') {
+        console.error("UNITS_DATA is not loaded! Please ensure units_data.js is included.");
+        return;
+    }
     PROCESSED_UNITS = []; baseHasTalents = {};
     const ALL_TRAITS = ["Red", "Black", "Floating", "Angel", "Metal", "Alien", "Zombie", "Aku", "Relic", "Traitless"];
     for (const fullName in UNITS_DATA) {
@@ -436,31 +772,88 @@ function buildUnits() {
 }
 
 async function loadCustomCriteria() {
-    customCriteria = {}; customCategoryMap = {}; customTooltips = {}; customNegations = {};
-    const categories = ['Traits', 'Range', 'Range Type', 'Multi-Hit', 'KB', 'CD', 'Speed', 'TBA', 'Price', 'Target Type', 'Rarity', 'Abilities', 'Misc', 'Gacha', 'Event', 'Source', 'Origin', 'Talents'];
-    for (const cat of categories) {
+    customCriteria = {}; customCategoryMap = {}; customTooltips = {}; customNegations = {}; customManualOnly = {}; guideData = {};
+    if (location.protocol === 'file:') {
+        console.warn("Running locally (file://). Skipping Custom fetch.");
+    } else {
+        const categories = ['Traits', 'Range', 'Range Type', 'Multi-Hit', 'KB', 'CD', 'Speed', 'TBA', 'Price', 'Target Type', 'Rarity', 'Abilities', 'Misc', 'Gacha', 'Event', 'Source', 'Origin', 'Talents'];
+        for (const cat of categories) {
+            try {
+                let response = await fetch(`${CUSTOM_TXT}${cat}.txt?t=${Date.now()}`);
+                if (!response.ok) continue;
+                let text = await response.text(); text = text.replace(/^\uFEFF/, '');
+                const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+                let currentCond = null; let units = [];
+                for (let i = 0; i < lines.length; i++) {
+    			const rawLine = lines[i];
+    			if (/^\d+(-\d+)?$/.test(rawLine)) { if (currentCond) units.push(rawLine); } 
+    			else {
+        			if (currentCond) { customCriteria[currentCond] = units; customCategoryMap[currentCond] = cat; }
+        			let condLine = rawLine;
+        			let manualOnly = false;
+        			if (condLine.startsWith('!')) {
+            				manualOnly = true;
+            				condLine = condLine.substring(1).trim();
+        			}
+        
+        			currentCond = condLine; units = []; let j = i + 1;
+        			if (manualOnly) customManualOnly[currentCond] = true;
+        
+        			const tooltipMatch = currentCond.match(/\/(.+?)\//);
+        			if (tooltipMatch && j < lines.length && !/^\d+(-\d+)?$/.test(lines[j]) && !lines[j].startsWith("NOT: ")) { customTooltips[tooltipMatch[1]] = lines[j]; j++; }
+        			if (j < lines.length && lines[j].startsWith("NOT: ")) { customNegations[currentCond] = lines[j].substring(5).trim(); j++; }
+        			i = j - 1; 
+    			}
+		}
+		if (currentCond) { customCriteria[currentCond] = units; customCategoryMap[currentCond] = cat; }
+            } catch (e) {}
+        }
+        
+        // Load Guide
         try {
-            let response = await fetch(`${CUSTOM_TXT}${cat}.txt?t=${Date.now()}`);
-            if (!response.ok) continue;
-            let text = await response.text(); text = text.replace(/^\uFEFF/, '');
-            const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-            let currentCond = null; let units = [];
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                if (/^\d+(-\d+)?$/.test(line)) { if (currentCond) units.push(line); } 
-                else {
-                    if (currentCond) { customCriteria[currentCond] = units; customCategoryMap[currentCond] = cat; }
-                    currentCond = line; units = []; let j = i + 1;
-                    const tooltipMatch = currentCond.match(/\/(.+?)\//);
-                    if (tooltipMatch && j < lines.length && !/^\d+(-\d+)?$/.test(lines[j]) && !lines[j].startsWith("NOT: ")) { customTooltips[tooltipMatch[1]] = lines[j]; j++; }
-                    if (j < lines.length && lines[j].startsWith("NOT: ")) { customNegations[currentCond] = lines[j].substring(5).trim(); j++; }
-                    i = j - 1; 
+            let response = await fetch(`${CUSTOM_TXT}Guide.txt?t=${Date.now()}`);
+            if (response.ok) {
+                let text = await response.text();
+                let lines = text.split('\n').map(l => l.trim()).filter(l => l);
+                let currentSection = null;
+                for (let line of lines) {
+                    if (/^\d+$/.test(line)) {
+                        if (currentSection) guideData[currentSection].push(line);
+                    } else {
+                        currentSection = line;
+                        guideData[currentSection] = [];
+                    }
                 }
             }
-            if (currentCond) { customCriteria[currentCond] = units; customCategoryMap[currentCond] = cat; }
         } catch (e) {}
     }
-    let baseConds = ["Rarity: Normal", "Rarity: Special", "Rarity: Rare", "Rarity: Super Rare", "Rarity: Uber Super Rare", "Rarity: Legend Rare", "Normal Form", "Evolved Form", "True Form", "Ultra Form", "Has talents", "Targets: Red","Targets: Black","Targets: Floating","Targets: Angel","Targets: Metal","Targets: Alien","Targets: Zombie","Targets: Aku","Targets: Relic","Targets: Traitless", "No Target Traits", "Targets: Traited", "<200 range","500+ range", "LD","Omni", "Multi-Hit", "1 KB", "<10 CD","60+ CD", "<10 speed","10+ speed", "<1 TBA","10+ TBA", "Has: Behemoth Slayer","Has: Colossus Slayer","Has: Sage Slayer","Has: EVA angel Killer","Has: Witch Killer", "Has: Immune to Wave","Has: Immune to Surge","Has: Immune to Slow","Has: Immune to Freeze","Has: Immune to Curse","Has: Immune to Toxic","Has: Immune to Weaken","Has: Immune to Knockback","Has: Immune to Warp", "Immune to Explosions", "Does Wave Attacks","Does Surge Attacks","Does Explosions","Does Mini-Wave","Does Mini-Surge", "Can: Freeze","Can: Slow","Can: Weaken","Can: Curse","Can: Knockback", "Can deal critical hits","Can do savage blows", "<1000 Price","1000+ Price", "Has \"Cat\" in its name", "Single Target","Area Attack", "Has: Target Only", "Has: Barrier Breaker", "Has: Shield Pierce", "Stops Waves", "Has: Dodge", "Massive Damage", "Insane damage", "Insane Resist", "Resistant to", "Strong against", "Has: Conjure", "Has: Soulstrike", "Has: Zombie Killer"];
+    
+    let baseConds = [
+        "Rarity: Normal", "Rarity: Special", "Rarity: Rare", "Rarity: Super Rare", "Rarity: Uber Super Rare", "Rarity: Legend Rare", 
+        "Normal Form", "Evolved Form", "True Form", "Ultra Form", 
+        "Has talents", 
+        "Targets: Red","Targets: Black","Targets: Floating","Targets: Angel","Targets: Metal","Targets: Alien","Targets: Zombie","Targets: Aku","Targets: Relic","Targets: Traitless", 
+        "No Target Traits", "Targets: Traited", 
+        "<200 range","500+ range", 
+        "LD","Omni", "Multi-Hit", 
+        "1 KB", "2 KB", "3 KB", "3 or more KBs", 
+        "<10 CD","60+ CD", 
+        "<10 speed","10+ speed", 
+        "<1 TBA","10+ TBA", 
+        "Has: Behemoth Slayer","Has: Colossus Slayer","Has: Sage Slayer","Has: EVA angel Killer","Has: Witch Killer", 
+        "Has: Immune to Wave","Has: Immune to Surge","Has: Immune to Slow","Has: Immune to Freeze","Has: Immune to Curse","Has: Immune to Toxic","Has: Immune to Weaken","Has: Immune to Knockback","Has: Immune to Warp", 
+        "Immune to Explosions", 
+        "Does Wave Attacks","Does Surge Attacks","Does Explosions","Does Mini-Wave","Does Mini-Surge", 
+        "Can: Freeze","Can: Slow","Can: Weaken","Can: Curse","Can: Knockback", 
+        "Can deal critical hits","Can do savage blows", 
+        "<1000 Price","1000+ Price", "5000+ Price", 
+        "Has \"Cat\" in its name", 
+        "Single Target","Area Attack", 
+        "Has: Target Only", "Has: Barrier Breaker", "Has: Shield Pierce", "Stops Waves", "Has: Dodge", 
+        "Massive Damage", "Insane damage", "Insane Resist", "Resistant to", "Strong against", 
+        "Has: Conjure", "Has: Soulstrike", "Has: Zombie Killer", 
+        "Has: Survive", "Has: Counter-Surge"
+    ];
     allConditions = [...baseConds];
     for (const name of Object.keys(customCriteria)) { if (!allConditions.includes(name)) allConditions.push(name); }
     sortedConditions = [...allConditions].sort((a, b) => { const catA = getConditionCategory(a) || "Misc"; const catB = getConditionCategory(b) || "Misc"; if (catA !== catB) return catA.localeCompare(catB); return a.localeCompare(b); });
@@ -477,16 +870,19 @@ function getConditionCategory(cond) {
     if (cond === "Normal Form" || cond === "Evolved Form" || cond === "True Form" || cond === "Ultra Form") return "Form";
     if (cond === "Has talents" || cond === "Has ultra talents") return "Talents";
     if (["Massive Damage", "Insane damage", "Insane Resist", "Resistant to", "Strong against"].includes(cond)) return "Trait related abilities";
-    if (cond === "Has: Target Only" || cond === "Only attacks" || cond === "Has: Barrier Breaker" || cond === "Barrier Breaker" || cond === "Has: Shield Pierce" || cond === "Shield Pierce" || cond === "Stops Waves" || cond === "Has: Dodge" || cond === "Has: Conjure" || cond === "Has: Soulstrike") return "Special";
+    
+    // NEW CONDITIONS CATEGORIZATION
+    if (cond === "Has: Survive" || cond === "Has: Counter-Surge" || cond === "Has: Target Only" || cond === "Only attacks" || cond === "Has: Barrier Breaker" || cond === "Barrier Breaker" || cond === "Has: Shield Pierce" || cond === "Shield Pierce" || cond === "Stops Waves" || cond === "Has: Dodge" || cond === "Has: Conjure" || cond === "Has: Soulstrike") return "Special";
+    if (cond === "3 or more KBs" || cond === "1 KB" || cond === "2 KB" || cond === "3 KB") return "KB";
+    if (cond === "5000+ Price" || cond === "<1000 Price" || cond === "1000+ Price") return "Price";
+    
     if (cond === "Has \"Cat\" in its name" || cond === "Has 'Cat' in name") return "Misc";
     if (["<200 range", "500+ range", "200-400 range", "400-500 range"].includes(cond)) return "Range";
     if (["LD", "Omni"].includes(cond)) return "Range Type";
     if (cond === "Multi-Hit") return "Multi-Hit";
-    if (["1 KB", "2 KB", "3 KB"].includes(cond)) return "KB";
     if (["<10 CD", "60+ CD", "10-30 CD"].includes(cond)) return "CD";
     if (["<10 speed", "10+ speed"].includes(cond)) return "Speed";
     if (["<1 TBA", "10+ TBA", "1-3 TBA", "<10 TBA"].includes(cond)) return "TBA";
-    if (["<1000 Price", "1000+ Price"].includes(cond)) return "Price";
     if (["Single Target", "Area Attack"].includes(cond)) return "Target Type";
     if (cond.startsWith("Rarity: ")) return "Rarity";
     if (cond.startsWith("Targets: ") && !["Targets: All", "Targets: All non-Metal"].includes(cond)) return "Traits";
@@ -568,6 +964,13 @@ function checkCondition(fullName, condition) {
         else if (condition === "Has: Zombie Killer" || condition === "Zombie Killer") res = originalTxt.toLowerCase().includes("zombie killer");
         else if (condition === "Has: Conjure" || condition === "Conjure") res = originalTxt.toLowerCase().includes("conjure");
         else if (condition === "Has: Soulstrike" || condition === "Soulstrike") res = originalTxt.toLowerCase().includes("soulstrike");
+        
+        // NEW CONDITIONS
+        else if (condition === "Has: Survive") res = originalTxt.toLowerCase().includes("survive");
+        else if (condition === "Has: Counter-Surge") res = originalTxt.toLowerCase().includes("counter surge") || originalTxt.toLowerCase().includes("counter-surge");
+        else if (condition === "3 or more KBs") res = unit.allForms.some(f => f.kb >= 3);
+        else if (condition === "5000+ Price") res = unit.allForms.some(f => f.price >= 5000);
+        
         else if (condition.startsWith("Has: Immune to ") || condition.startsWith("Immune to ")) {
             const imm = condition.replace("Has: Immune to ", "").replace("Immune to ", "").toLowerCase();
             const lines = originalTxt.toLowerCase().split('\n');
@@ -793,9 +1196,8 @@ function getCellData(r, c, ignoreCurse = false) {
         for (let k = 0; k < str.length; k++) hash = ((hash << 5) - hash) + str.charCodeAt(k);
         
         let noise = (Math.abs(hash) % 100) / 100;
-        if (noise < 0.4) noise = 0;
+        const genWeight = Math.max(base * noise, 1); // Минимальный вес 1 вместо 0
         
-        const genWeight = base * noise;
         const realVotes = votesForCell[baseId] || 0;
         const finalWeight = genWeight + (realVotes * 500); 
         
@@ -812,6 +1214,56 @@ function getCellData(r, c, ignoreCurse = false) {
         if (pct > maxPct) maxPct = pct;
     }
 
+    // Убран фильтр .filter(x => x.pct > 0), чтобы юниты оставались в кандидатах
+    const results = valid.map(u => {
+        const pct = weights[u.id];
+        const isBest = (pct > 0 && Math.abs(pct - minPct) < 0.001);
+        const isWorst = (Math.abs(pct - maxPct) < 0.001);
+        return { unit: u, pct: parseFloat(pct.toFixed(1)), rarity: getBaseRarity(pct), isBest: isBest && totalGroups > 1, isWorst: isWorst && totalGroups > 1 };
+    });
+
+    cellCache[key] = results; return results;
+}function getCellData(r, c, ignoreCurse = false) {
+    const stateStr = currentGrid.date + JSON.stringify(currentGrid.cells) + currentGrid.isBrutal + ignoreCurse + JSON.stringify(currentGrid.conditions);
+    if (stateStr !== lastCacheState) { cellCache = {}; lastCacheState = stateStr; }
+    const key = `${r}-${c}-${ignoreCurse}`; if (cellCache[key]) return cellCache[key];
+    const conds = getEffectiveConditions(r, c, ignoreCurse); const valid = getValidUnits(conds.row, conds.col);
+    if (valid.length === 0) { cellCache[key] = []; return []; }
+    let grouped = {}; valid.forEach(u => { if (!grouped[u.id]) grouped[u.id] = []; grouped[u.id].push(u); });
+    const totalGroups = Object.keys(grouped).length;
+    if (totalGroups === 1) { const results = valid.map(u => ({ unit: u, pct: 100, rarity: 'Special', isBest: false, isWorst: false })); cellCache[key] = results; return results; }
+    
+    let totalWeight = 0; const weights = {}; const baseWeights = { 'Normal': 500, 'Rare': 150, 'SuperRare': 40, 'Uber': 10, 'Legend': 2, 'Special': 500 };
+    
+    const cellIndex = r * 3 + c;
+    const votesForCell = (currentGrid.realVotes && currentGrid.realVotes[cellIndex]) ? currentGrid.realVotes[cellIndex] : {};
+
+    for (const baseId in grouped) {
+        const repUnit = grouped[baseId][0]; const rar = repUnit.stats.type; let base = baseWeights[rar] || 300;
+        const idNum = parseInt(baseId.replace(/\D/g, '')) || 0; const distFromCenter = Math.abs(idNum - 350); const idMultiplier = 0.2 + (distFromCenter / 350) * 1.5; base *= idMultiplier;
+        let hash = 0; const str = baseId + r + c + "weight";
+        for (let k = 0; k < str.length; k++) hash = ((hash << 5) - hash) + str.charCodeAt(k);
+        
+        let noise = (Math.abs(hash) % 100) / 100;
+        const genWeight = Math.max(base * noise, 1); // Минимальный вес 1 вместо 0
+        
+        const realVotes = votesForCell[baseId] || 0;
+        const finalWeight = genWeight + (realVotes * 500); 
+        
+        weights[baseId] = finalWeight; totalWeight += finalWeight;
+    }
+
+    let minPct = 100, maxPct = 0;
+    for (const baseId in weights) {
+        let pct = totalWeight === 0 ? 0 : (weights[baseId] / totalWeight) * 100;
+        if (pct < 0.1 && weights[baseId] > 0) pct = 0.1;
+        if (pct > 99.9) pct = 99.9;
+        weights[baseId] = pct;
+        if (pct < minPct) minPct = pct;
+        if (pct > maxPct) maxPct = pct;
+    }
+
+    // Убран фильтр .filter(x => x.pct > 0), чтобы юниты оставались в кандидатах
     const results = valid.map(u => {
         const pct = weights[u.id];
         const isBest = (pct > 0 && Math.abs(pct - minPct) < 0.001);
@@ -821,7 +1273,6 @@ function getCellData(r, c, ignoreCurse = false) {
 
     cellCache[key] = results; return results;
 }
-
 function calculatePercentage(r, c, unitFullName) {
     const data = getCellData(r, c, false);
     const res = data.find(x => x.unit.fullName === unitFullName);
@@ -868,42 +1319,44 @@ function upgradeRarity(rarity) {
     return rarity;
 }
 
-function calculateFinalScore(isLoss = false) {
+function calculateFinalScoreForGrid(grid, isLoss = false) {
     let filledCells = 0;
-    for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) { if (currentGrid.cells[r][c]) filledCells++; } }
+    for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) { if (grid.cells[r][c]) filledCells++; } }
     let baseCellPoints = filledCells * 500;
     let winBonus = isLoss ? 0 : 1000;
     let livesBonus = 0;
     if (!isLoss) {
-        if (currentGrid.style === 'IronWall' && currentGrid.cannon === 'IronWall' && currentGrid.foundation === 'IronWall') livesBonus = Math.round(currentLife * 750);
-        else if (currentGrid.foundation === 'Curseblast') livesBonus = Math.round(1250 + currentLife * 250);
-        else livesBonus = currentLife * 500;
+        if (grid.style === 'IronWall' && grid.cannon === 'IronWall' && grid.foundation === 'IronWall') livesBonus = Math.round((grid.lives || 3) * 750);
+        else if (grid.foundation === 'Curseblast') livesBonus = Math.round(1250 + (grid.lives || 3) * 250);
+        else livesBonus = (grid.lives || 3) * 500;
     }
-    let uses = CANNONS[currentGrid.cannon] ? CANNONS[currentGrid.cannon].uses : 1;
+    let uses = CANNONS[grid.cannon] ? CANNONS[grid.cannon].uses : 1;
     let cannonBonus = 0; const baseCannonScore = 500;
-    if (currentGrid.cannon === 'IronWall' && currentGrid.style === 'IronWall' && currentGrid.foundation === 'IronWall') cannonBonus = 0;
-    else if (currentGrid.style === 'Waterblast' && currentGrid.cannon === 'Waterblast' && currentGrid.foundation === 'Waterblast') cannonBonus = 1000;
-    else if (currentGrid.style === 'Waterblast') cannonBonus = 1000;
-    else if (currentGrid.foundation === 'Waterblast') cannonBonus = Math.min(1500, Math.round(250 + (Math.max(0, cannonUsesLeft) / uses) * baseCannonScore * 2));
-    else cannonBonus = Math.min(1500, Math.round((Math.max(0, cannonUsesLeft) / uses) * baseCannonScore * 2));
+    if (grid.cannon === 'IronWall' && grid.style === 'IronWall' && grid.foundation === 'IronWall') cannonBonus = 0;
+    else if (grid.style === 'Waterblast' && grid.cannon === 'Waterblast' && grid.foundation === 'Waterblast') cannonBonus = 1000;
+    else if (grid.style === 'Waterblast') cannonBonus = 1000;
+    else if (grid.foundation === 'Waterblast') cannonBonus = Math.min(1500, Math.round(250 + (Math.max(0, grid.cannonUses || 1) / uses) * baseCannonScore * 2));
+    else cannonBonus = Math.min(1500, Math.round((Math.max(0, grid.cannonUses || 1) / uses) * baseCannonScore * 2));
     let timeBonus = 0;
-    if (currentGrid.cannon === 'SlowBeam' && currentGrid.style === 'SlowBeam' && currentGrid.foundation === 'SlowBeam') timeBonus = 1000;
-    else { let graceSeconds = (currentGrid.foundation === 'SlowBeam' || currentGrid.style === 'SlowBeam') ? 600 : 300; if (currentGrid.isBrutal) graceSeconds += 300; timeBonus = isLoss ? 0 : Math.max(0, Math.round(1000 - Math.max(0, timerSeconds - graceSeconds) * (1000 / graceSeconds))); }
-    let rarityBonus = 0; const isSlowBeamStyle = currentGrid.style === 'SlowBeam';
-    for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) { const cell = currentGrid.cells[r][c]; if (cell) rarityBonus += getRarityScore(cell.rarity, cell.percentage || 0, isSlowBeamStyle); } }
-    let holyMantleBonus = (currentGrid.holyMantles || 0) * 200;
+    if (grid.cannon === 'SlowBeam' && grid.style === 'SlowBeam' && grid.foundation === 'SlowBeam') timeBonus = 1000;
+    else { let graceSeconds = (grid.foundation === 'SlowBeam' || grid.style === 'SlowBeam') ? 600 : 300; if (grid.isBrutal) graceSeconds += 300; timeBonus = isLoss ? 0 : Math.max(0, Math.round(1000 - Math.max(0, (grid.timer || 0) - graceSeconds) * (1000 / graceSeconds))); }
+    let rarityBonus = 0; const isSlowBeamStyle = grid.style === 'SlowBeam';
+    for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) { const cell = grid.cells[r][c]; if (cell) rarityBonus += getRarityScore(cell.rarity, cell.percentage || 0, isSlowBeamStyle); } }
+    let holyMantleBonus = (grid.holyMantles || 0) * 200;
     let comboBonus = 0;
-    if (currentGrid.style === 'Thunderbolt') comboBonus = (currentGrid.maxCombo || 0) * 150;
-    if (currentGrid.cannon === 'Breakerblast' && currentGrid.style === 'Breakerblast' && currentGrid.foundation === 'Breakerblast') {
-        let bestCount = 0; for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) { if (currentGrid.cells[r][c] && currentGrid.cells[r][c].rarity === 'Best') bestCount++; } }
+    if (grid.style === 'Thunderbolt') comboBonus = (grid.maxCombo || 0) * 150;
+    if (grid.cannon === 'Breakerblast' && grid.style === 'Breakerblast' && grid.foundation === 'Breakerblast') {
+        let bestCount = 0; for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) { if (grid.cells[r][c] && grid.cells[r][c].rarity === 'Best') bestCount++; } }
         comboBonus += bestCount * 200;
     }
     let totalBase = baseCellPoints + winBonus + livesBonus + cannonBonus + timeBonus + comboBonus + rarityBonus + holyMantleBonus;
-    let multiplier = currentGrid.isBrutal ? 1.5 : 1; 
+    let multiplier = grid.isBrutal ? 1.5 : 1; 
     let finalTotal = Math.round(totalBase * multiplier);
-    if (currentGrid.isBrutal) { if (finalTotal > 30000) finalTotal = 30000; } else { if (finalTotal > 20000) finalTotal = 20000; }
+    if (grid.isBrutal) { if (finalTotal > 30000) finalTotal = 30000; } else { if (finalTotal > 20000) finalTotal = 20000; }
     return { base: Math.round(baseCellPoints * multiplier), win: Math.round(winBonus * multiplier), lives: Math.round(livesBonus * multiplier), cannon: Math.round(cannonBonus * multiplier), time: Math.round(timeBonus * multiplier), rarity: Math.round(rarityBonus * multiplier), combo: Math.round(comboBonus * multiplier), holyMantleBonus: Math.round(holyMantleBonus * multiplier), total: finalTotal, filledCells: filledCells };
 }
+
+function calculateFinalScore(isLoss = false) { return calculateFinalScoreForGrid(currentGrid, isLoss); }
 
 function getGrade(score, isBrutal) {
     if (isBrutal) {
@@ -959,38 +1412,40 @@ function renderCalendar() {
         const g = gridsData[key]; let bottomContent = '';
         if (g) {
             day.classList.add('has-grid');
-            if (g.completed && !g.isLoss) day.classList.add('completed');
-            bottomContent = `#${getGridNumber(key)}`; day.onclick = () => openGrid(key);
+            if (g.completed && !g.isLoss) {
+                day.classList.add('completed');
+                bottomContent = `<img src="${IMG_OTHER}clear.png" onerror="this.onerror=null; this.src='clear.png';" style="width: 24px; height: 24px; position: absolute; top: 5px; left: 5px; z-index: 10;">`;
+            } else {
+                bottomContent = `#${getGridNumber(key)}`;
+            }
+            day.onclick = () => openGrid(key);
         } else {
             bottomContent = `+`; day.onclick = () => { openEditorPage(key); };
         }
-        day.innerHTML = `<div class="day-top">${d.getDate()}</div><div class="day-bottom">${bottomContent}</div>`;
+        day.innerHTML = `<div class="day-top">${d.getDate()}</div><div class="day-bottom" style="position:relative;">${bottomContent}</div>`;
         grid.appendChild(day); d.setDate(d.getDate() + 1);
     }
     const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     document.getElementById('currentMonth').innerHTML = `${monthNames[month]} ${year}`;
 }
 
-function changeMonth(offset) {
-    currentDate.setMonth(currentDate.getMonth() + offset);
-    renderCalendar();
-}
-
+function changeMonth(offset) { currentDate.setMonth(currentDate.getMonth() + offset); renderCalendar(); }
 function getDateKey(date) { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
-function saveGrids() { localStorage.setItem('bc_grids_v30', JSON.stringify(gridsData)); }
+function saveGrids() { 
+    localStorage.setItem('bc_grids_v30', JSON.stringify(gridsData)); 
+}
 function loadGrids() { const s = localStorage.getItem('bc_grids_v30'); if (s) gridsData = JSON.parse(s); }
-
-function getGridNumber(key) { if (key === 'endless') return 0; const keys = Object.keys(gridsData).filter(k => k !== 'endless').sort(); const idx = keys.indexOf(key); return idx !== -1 ? idx + 1 : 1; }
+function getGridNumber(key) { if (key.startsWith('endless')) return 0; const keys = Object.keys(gridsData).filter(k => !k.startsWith('endless')).sort(); const idx = keys.indexOf(key); return idx !== -1 ? idx + 1 : 1; }
 
 function navDailyGrid(dir) {
-    if (currentGrid.date === 'endless') return;
-    const keys = Object.keys(gridsData).filter(k => k !== 'endless').sort();
+    if (currentGrid.date.startsWith('endless')) return;
+    const keys = Object.keys(gridsData).filter(k => !k.startsWith('endless')).sort();
     const idx = keys.indexOf(currentGrid.date); if (idx === -1) return;
     const newIdx = idx + dir; if (newIdx >= 0 && newIdx < keys.length) openGrid(keys[newIdx]);
 }
 
 function startEndlessMode() {
-    if (gridsData['endless']) delete gridsData['endless'];
+    const key = 'endless_' + Date.now();
     let r = [], c = []; let valid = false; let attempts = 0;
     while (!valid && attempts < 1000) {
         attempts++;
@@ -999,7 +1454,6 @@ function startEndlessMode() {
         valid = true;
         for(let i=0; i<3; i++) { for(let j=0; j<3; j++) { if (getValidUnits(r[i], c[j]).length === 0) { valid = false; break; } } if (!valid) break; }
     }
-    const key = 'endless';
     gridsData[key] = { date: key, title: "Infinite Mode", conditions: { rows: r, cols: c }, cells: Array(3).fill().map(()=>Array(3).fill(null)), completed: false, timer: 0, cannon: 'Default', cannonUses: CANNONS['Default'].uses, style: 'Default', foundation: 'Default', extraRow: [false,false,false], extraCol: [false,false,false], originalConditions: { rows: [...r], cols: [...c] }, forceLegend: false, isBrutal: false, brutalConds: null, lives: 3, correctCount: 0, firstDamage: false, duplicateNextUnit: false, pinkBlink: null, yellowBlink: null, comboCount: 0, comboTimer: 0, maxCombo: 0, curseFired: false, _cachedCurseConds: null, hasLostLife: false, ironWallShieldUsed: false, holyRows: [false, false, false], holyMantles: 0, legendaryCount: 0 };
     currentGrid = gridsData[key]; currentLife = 3; timerSeconds = 0; shieldedCells = []; thunderPauseUntil = 0; pendingCannonAction = null; cellAnimations = {};
     resultsBrutal = false; resultsNoRepeats = false; resultsCurseblast = false; clearValidUnitsCache();
@@ -1011,7 +1465,7 @@ function getRandomCond() { const pool = allConditions.filter(cond => { if (cond 
 async function openGrid(keyOrDate) {
     let key = typeof keyOrDate === 'string' ? keyOrDate : getDateKey(keyOrDate);
     
-    if (dbClient && key !== 'endless') {
+    if (dbClient && !key.startsWith('endless')) {
         try {
             const { data } = await dbClient.from('grids').select('*').eq('date', key).eq('status', 'daily').single();
             if (data) {
@@ -1036,7 +1490,7 @@ async function openGrid(keyOrDate) {
     
     currentGrid = gridsData[key];
     
-    if (dbClient && key !== 'endless') {
+    if (dbClient && !key.startsWith('endless')) {
         try {
             const { data: votesData } = await dbClient.from('votes').select('cell_index, unit_id').eq('grid_id', key);
             currentGrid.realVotes = Array(9).fill().map(() => ({}));
@@ -1048,17 +1502,19 @@ async function openGrid(keyOrDate) {
         } catch(e) { currentGrid.realVotes = null; }
     }
 
-    if (userProfile && userProfile.settings) {
-        if (userProfile.settings.lockLoadout) {
-            currentGrid.cannon = userProfile.settings.favCannon || 'Default';
-            currentGrid.style = userProfile.settings.favStyle || 'Default';
-            currentGrid.foundation = userProfile.settings.favFoundation || 'Default';
+    let activeSettings = null;
+    if (currentUser && userProfile && userProfile.settings) activeSettings = userProfile.settings;
+    else activeSettings = JSON.parse(localStorage.getItem('bc_settings') || '{}');
+
+    if (activeSettings) {
+        if (activeSettings.lockLoadout) {
+            currentGrid.cannon = activeSettings.favCannon || 'Default';
+            currentGrid.style = activeSettings.favStyle || 'Default';
+            currentGrid.foundation = activeSettings.favFoundation || 'Default';
         }
-        if (userProfile.settings.lockDifficulty) {
-            currentGrid.isBrutal = userProfile.settings.favDifficulty || false;
-            if (currentGrid.isBrutal && !currentGrid.brutalConds) {
-                currentGrid.brutalConds = computeDeterministicBrutals(currentGrid);
-            }
+        if (activeSettings.lockDifficulty) {
+            currentGrid.isBrutal = activeSettings.favDifficulty || false;
+            if (currentGrid.isBrutal && !currentGrid.brutalConds) currentGrid.brutalConds = computeDeterministicBrutals(currentGrid);
         }
     }
 
@@ -1117,10 +1573,11 @@ async function openGrid(keyOrDate) {
 }
 
 function loadGridUI() {
+    document.getElementById('userProfileBtn').style.display = 'none'; // Скрываем кнопку
     currentCannon = currentGrid.cannon; cannonUsesLeft = currentGrid.cannonUses; currentStyle = currentGrid.style; currentFoundation = currentGrid.foundation;
     document.getElementById('calendarPage').style.display = 'none'; document.getElementById('editorPage').classList.remove('active'); document.getElementById('gridPage').classList.add('active');
     
-    if (currentGrid.date === 'endless') {
+    if (currentGrid.date.startsWith('endless')) {
         document.getElementById('nextEndlessBtn').style.display = 'block'; document.getElementById('prevGridBtn').style.display = 'none'; document.getElementById('nextGridBtn').style.display = 'none';
         document.getElementById('modeTitle').textContent = 'Infinite Mode'; document.getElementById('gridTitleDisplay').textContent = '';
     } else {
@@ -1153,9 +1610,13 @@ function loadGridUI() {
     
     if (!currentGrid.completed && !currentGrid.isLoss && timerSeconds > 0) startTimer();
 }
-
-function closeGridPage() { stopTimer(); document.getElementById('gridPage').classList.remove('active'); document.getElementById('calendarPage').style.display = 'block'; renderCalendar(); }
-
+function closeGridPage() { 
+    stopTimer(); 
+    document.getElementById('gridPage').classList.remove('active'); 
+    document.getElementById('calendarPage').style.display = 'block'; 
+    document.getElementById('userProfileBtn').style.display = 'flex';
+    renderCalendar(); 
+}
 function toggleBrutalMode() {
     if (currentGrid.completed || currentGrid.isLoss) return;
     if (Object.values(currentGrid.cells).some(row => row.some(c => c)) || currentGrid.hasLostLife) { document.getElementById('brutalToggle').checked = currentGrid.isBrutal; showToast("Cannot change difficulty during game!", "error"); return; }
@@ -1188,7 +1649,7 @@ function cancelCannon() { if (pendingCannonAction) { pendingCannonAction = null;
 function renderGrid() {
     const table = document.getElementById('gridTable');
     let html = '<thead><tr>';
-    if (currentGrid.date !== 'endless') { const gridNum = getGridNumber(currentGrid.date); html += `<th class="grid-index"><div class="grid-number-text">#${gridNum}</div></th>`; } else html += `<th class="grid-index" style="background:transparent; border:none;"></th>`;
+    if (!currentGrid.date.startsWith('endless')) { const gridNum = getGridNumber(currentGrid.date); html += `<th class="grid-index"><div class="grid-number-text">#${gridNum}</div></th>`; } else html += `<th class="grid-index" style="background:transparent; border:none;"></th>`;
     const isHeaderTarget = pendingCannonAction === 'Curseblast'; const isAllCellsTarget = pendingCannonAction === 'Default' || pendingCannonAction === 'HolyBlast';
     for (let j = 0; j < 3; j++) { let thClass = isHeaderTarget ? 'cannon-valid-target' : ''; html += `<th class="${thClass}" onclick="headerClick(false, ${j})">` + bcCondText(currentGrid.conditions.cols[j], 15) + `</th>`; }
     html += '</tr></thead><tbody>';
@@ -1205,11 +1666,11 @@ function renderGrid() {
             let tdClass = ''; if (isAllCellsTarget) tdClass = 'cannon-valid-target'; else if (pendingCannonAction === 'Waterblast' && !cell) tdClass = 'cannon-valid-target'; else if (pendingCannonAction === 'Breakerblast' && cell) tdClass = 'cannon-valid-target'; else if (pendingCannonAction === 'IronWall' || pendingCannonAction === 'SlowBeam') tdClass = 'cannon-valid-target';
             
             if (cell) {
-                const rarityClass = `rarity-${cell.rarity}`; const displayRar = getDisplayRarity(cell.rarity); const pctText = cell.percentage ? ` ${cell.percentage}%` : '';
+                const rarityClass = `rarity-${cell.rarity}`; const displayRar = getDisplayRarity(cell.rarity); const pctText = (cell.percentage !== undefined && cell.percentage !== null) ? ` ${cell.percentage}%` : '';
                 const bgColor = getRarityColor(cell.rarity); const txtColor = (cell.rarity === 'Legend' || cell.rarity === 'Best' || cell.rarity === 'Special') ? '#333' : '#fff';
                 const animKey = `${i}-${j}`; let animClass = ''; if (cellAnimations[animKey]) animClass = `anim-${cell.rarity}`;
                 html += `<td class="filled ${rarityClass} ${animClass} ${cursedClass} ${tdClass} ${trailClass}" onclick="cellClick(${i},${j})" id="cell-${i}-${j}">
-                    <div class="cell-content"><img class="cell-image" src="${cell.image}" onerror="this.style.display='none'"><div class="cell-name">${bcText(cell.unitName, { size:14 })}</div></div>
+                    <div class="cell-content"><img class="cell-image" src="${cell.image}" onerror="this.onerror=null; this.src='images/${cell.unitFullName.split(' ')[0]}.png';"><div class="cell-name">${bcText(cell.unitName, { size:14 })}</div></div>
                     <div class="cell-rarity" style="background:${bgColor}; color:${txtColor};">${displayRar}${pctText}</div>
                     ${brutalC ? `<div class="brutal-cond">${formatConditionName(brutalC)}</div>` : ''}${isShielded ? '<div class="shield-icon">🛡️</div>' : ''}
                 </td>`;
@@ -1306,7 +1767,11 @@ async function showFinalScore(isLoss = false) {
         
         renderResults();
 
-        if (currentUser && !currentGrid.isLoss && currentGrid.date !== 'endless' && dbClient) {
+        // Force save the current state to update the score in the account page
+        currentGrid.score = scoreObj.total;
+        saveGrids();
+
+        if (currentUser && !currentGrid.isLoss && !currentGrid.date.startsWith('endless') && dbClient) {
             const { data: existing } = await dbClient.from('user_grids').select('id').eq('user_id', currentUser.id).eq('grid_date', currentGrid.date);
             if (!existing || existing.length === 0) {
                 await dbClient.from('user_grids').insert([{
@@ -1315,16 +1780,25 @@ async function showFinalScore(isLoss = false) {
                     cannon: currentGrid.cannon, style: currentGrid.style, foundation: currentGrid.foundation,
                     cells: currentGrid.cells
                 }]);
+            } else {
+                // Обновляем счёт, если запись уже есть
+                await dbClient.from('user_grids').update({
+                    score: scoreObj.total,
+                    completed: currentGrid.completed,
+                    is_loss: currentGrid.isLoss,
+                    cannon: currentGrid.cannon, style: currentGrid.style, foundation: currentGrid.foundation,
+                    cells: currentGrid.cells
+                }).eq('id', existing[0].id);
             }
         }
 
     } catch (e) { console.error("Error showing final score:", e); }
 }
-
 function toggleBreakdown() { const bd = document.getElementById('scoreBreakdown'); bd.style.display = bd.style.display === 'none' || bd.style.display === '' ? 'block' : 'none'; }
 
 function gameOver() {
     currentGrid.isLoss = true; currentGrid.completed = true; stopTimer(); saveGrids(); renderGrid(); updateUI(); showFinalScore(true); showToast("GAME OVER!", "error");
+    checkAchievements();
 }
 
 function headerClick(isRow, index) {
@@ -1479,7 +1953,7 @@ function placeUnit(r, c, fullName, unitName, isCannon = false) {
         if (!isCannon) showToast(`Combo x${currentGrid.comboCount}!`, "success");
     }
     
-    if (currentUser && !isCannon && currentGrid.date !== 'endless' && dbClient) {
+    if (currentUser && !isCannon && !currentGrid.date.startsWith('endless') && dbClient) {
         const cellIdx = r * 3 + c;
         dbClient.from('votes').upsert({ grid_id: currentGrid.date, cell_index: cellIdx, unit_id: fullName.split(' ')[0].split('-')[0], user_id: currentUser.id })
         .then(({error}) => { if(error) console.log("Vote error:", error); });
@@ -1628,8 +2102,9 @@ function resetCurrentGrid(auto = false) {
         currentLife = 3; timerSeconds = 0; stopTimer(); shieldedCells = []; pendingCannonAction = null;
         document.getElementById('brutalToggle').checked = false; document.getElementById('resultsBrutalToggle').checked = false; document.getElementById('resultsNoRepeatsToggle').checked = false; document.getElementById('resultsCurseblastToggle').checked = false;
         resultsBrutal = false; resultsNoRepeats = false; resultsCurseblast = false;
-        saveGrids(); loadGridUI();
+        saveGrids(); loadGridUI(); checkAchievements();
     }
+    showFinalScore(false);
 }
 
 function openEquipSelectModal() {
@@ -1643,17 +2118,17 @@ function openEquipSelectModal() {
     
     for (const [key, data] of Object.entries(CANNONS)) {
         const div = document.createElement('div'); div.className = `equip-item ${currentCannon === key ? 'selected' : ''}`;
-        div.innerHTML = `<div class="equip-img-box"><img class="cannon-img" src="${getEquipImage('cannon', key)}" onerror="this.src='${getEquipImage('cannon', 'Default')}'"></div><div class="equip-item-name">${data.name}</div><div class="equip-item-desc">${data.desc}</div>`;
+        div.innerHTML = `<div class="equip-img-box"><img class="cannon-img" src="${getEquipImage('cannon', key)}" onerror="this.onerror=null; this.src='cannon_${key.toLowerCase()}.png';"></div><div class="equip-item-name">${data.name}</div><div class="equip-item-desc">${data.desc}</div>`;
         div.onclick = () => { currentCannon = key; updateLoadoutSelection(); }; cGrid.appendChild(div);
     }
     for (const [key, data] of Object.entries(STYLES)) {
         const div = document.createElement('div'); div.className = `equip-item ${currentStyle === key ? 'selected' : ''}`;
-        div.innerHTML = `<div class="equip-img-box"><img class="style-img" src="${getEquipImage('style', key)}" onerror="this.src='${getEquipImage('style', 'Default')}'"></div><div class="equip-item-name">${data.name}</div><div class="equip-item-desc">${data.desc}</div>`;
+        div.innerHTML = `<div class="equip-img-box"><img class="style-img" src="${getEquipImage('style', key)}" onerror="this.onerror=null; this.src='style_${key.toLowerCase()}.png';"></div><div class="equip-item-name">${data.name}</div><div class="equip-item-desc">${data.desc}</div>`;
         div.onclick = () => { currentStyle = key; updateLoadoutSelection(); }; sGrid.appendChild(div);
     }
     for (const [key, data] of Object.entries(FOUNDATIONS)) {
         const div = document.createElement('div'); div.className = `equip-item ${currentFoundation === key ? 'selected' : ''}`;
-        div.innerHTML = `<div class="equip-img-box"><img class="foundation-img" src="${getEquipImage('foundation', key)}" onerror="this.src='${getEquipImage('foundation', 'Default')}'"></div><div class="equip-item-name">${data.name}</div><div class="equip-item-desc">${data.desc}</div>`;
+        div.innerHTML = `<div class="equip-img-box"><img class="foundation-img" src="${getEquipImage('foundation', key)}" onerror="this.onerror=null; this.src='foundation_${key.toLowerCase()}.png';"></div><div class="equip-item-name">${data.name}</div><div class="equip-item-desc">${data.desc}</div>`;
         div.onclick = () => { currentFoundation = key; updateLoadoutSelection(); }; fGrid.appendChild(div);
     }
     
@@ -1706,9 +2181,11 @@ function closeEquipSelectModal() {
             currentGrid.holyRows = [false, false, false]; currentGrid.holyMantles = 0; currentGrid.legendaryCount = 0;
         }
         
-        if (currentUser && userProfile && userProfile.settings && userProfile.settings.lockLoadout) {
-            userProfile.settings.favCannon = currentCannon; userProfile.settings.favStyle = currentStyle; userProfile.settings.favFoundation = currentFoundation;
-            if (dbClient) dbClient.from('profiles').update({ settings: userProfile.settings }).eq('id', currentUser.id);
+        let activeSettings = (currentUser && userProfile && userProfile.settings) ? userProfile.settings : JSON.parse(localStorage.getItem('bc_settings') || '{}');
+        if (activeSettings && activeSettings.lockLoadout) {
+            activeSettings.favCannon = currentCannon; activeSettings.favStyle = currentStyle; activeSettings.favFoundation = currentFoundation;
+            if (currentUser && dbClient) dbClient.from('profiles').update({ settings: activeSettings }).eq('id', currentUser.id);
+            else localStorage.setItem('bc_settings', JSON.stringify(activeSettings));
         }
 
         saveGrids(); loadGridUI();
@@ -1777,7 +2254,7 @@ function triggerWaterblastOptions(r, c, isFree = false) {
         safeAllValid.sort((a, b) => { const idA = parseInt(a.id.replace(/\D/g, '')) || 0; const idB = parseInt(b.id.replace(/\D/g, '')) || 0; return idA - idB; });
         safeAllValid.forEach(u => {
             const div = document.createElement('div'); div.className = 'cannon-option'; div.style.flexDirection = 'column'; div.style.padding = '10px';
-            div.innerHTML = `<img class="cannon-option-img" src="${IMG_UNITS}${u.fullName.split(' ')[0]}.png" onerror="this.style.display='none';"><div class="cannon-option-info" style="align-items:center; text-align:center;"><h4 style="font-size:14px; margin-top:5px;">${u.name}</h4></div>`;
+            div.innerHTML = `<img class="cannon-option-img" src="${IMG_UNITS}${u.fullName.split(' ')[0]}.png" onerror="this.onerror=null; this.src='images/${u.fullName.split(' ')[0]}.png';"><div class="cannon-option-info" style="align-items:center; text-align:center;"><h4 style="font-size:14px; margin-top:5px;">${u.name}</h4></div>`;
             div.onclick = () => { document.getElementById('waterblastModal').classList.remove('active'); triggerEffect(`cell-${r}-${c}`, 'fx-water'); setTimeout(() => { placeUnit(r, c, u.fullName, u.name, true); }, 600); };
             container.appendChild(div);
         });
@@ -1786,7 +2263,7 @@ function triggerWaterblastOptions(r, c, isFree = false) {
     container.className = 'cannon-modal-grid'; container.innerHTML = '';
     validOptions.forEach(opt => {
         const div = document.createElement('div'); div.className = 'cannon-option';
-        div.innerHTML = `<img class="cannon-option-img" src="${IMG_UNITS}${opt.unit.fullName.split(' ')[0]}.png" onerror="this.style.display='none';"><div class="cannon-option-info"><h4>${opt.unit.name}</h4></div>`;
+        div.innerHTML = `<img class="cannon-option-img" src="${IMG_UNITS}${opt.unit.fullName.split(' ')[0]}.png" onerror="this.onerror=null; this.src='images/${opt.unit.fullName.split(' ')[0]}.png';"><div class="cannon-option-info"><h4>${opt.unit.name}</h4></div>`;
         div.onclick = () => {
             document.getElementById('waterblastModal').classList.remove('active');
             if (opt.type === 'both') { triggerEffect(`cell-${r}-${c}`, 'fx-water'); setTimeout(() => { if (placeUnit(r, c, opt.unit.fullName, opt.unit.name, true)) showToast("Correct! Cell filled.", "success"); }, 600); } 
@@ -1837,7 +2314,7 @@ function openCandidatesModal(r, c) {
     const uniqueMap = new Map(); cellData.forEach(item => { if (!uniqueMap.has(item.unit.id) || item.pct < uniqueMap.get(item.unit.id).pct) uniqueMap.set(item.unit.id, item); });
     let uniqueCandidates = Array.from(uniqueMap.values()); uniqueCandidates.sort((a, b) => b.pct - a.pct);
     const list = document.getElementById('candidatesList'); list.innerHTML = '';
-    uniqueCandidates.forEach(item => { const div = document.createElement('div'); div.className = 'candidate-item'; div.style.cursor = 'pointer'; div.innerHTML = `<img src="${IMG_UNITS}${item.unit.fullName.split(' ')[0]}.png" onerror="this.style.display='none'"><span>${item.unit.name}</span><span class="candidate-percent">${item.pct}%</span>`; div.onclick = () => showUnitInfo(item.unit.fullName); list.appendChild(div); });
+    uniqueCandidates.forEach(item => { const div = document.createElement('div'); div.className = 'candidate-item'; div.style.cursor = 'pointer'; div.innerHTML = `<img src="${IMG_UNITS}${item.unit.fullName.split(' ')[0]}.png" onerror="this.onerror=null; this.src='images/${item.unit.fullName.split(' ')[0]}.png';"><span>${item.unit.name}</span><span class="candidate-percent">${item.pct}%</span>`; div.onclick = () => showUnitInfo(item.unit.fullName); list.appendChild(div); });
     document.getElementById('candidatesTitle').innerHTML = bcCondText(conds.row + ' + ' + conds.col, 20); document.getElementById('candidatesModal').classList.add('active');
 }
 
@@ -1849,7 +2326,7 @@ function showUnitInfo(fullName) {
     const expandedTraits = getExpandedTraits(unit); for (const trait of expandedTraits) { const traitCond = `Targets: ${trait}`; if (!matchingConds.includes(traitCond) && !customCriteria[traitCond]) matchingConds.push(traitCond); }
     const grouped = {}; matchingConds.forEach(c => { let cat = getConditionCategory(c) || "Misc"; if (cat === "TargetType") cat = "Target Type"; if (!grouped[cat]) grouped[cat] = []; grouped[cat].push(c); });
     let forms = Object.keys(UNITS_DATA).filter(k => k.startsWith(unit.id + '-')).sort(); let idx = forms.indexOf(fullName);
-    let html = `<div style="display:flex; align-items:center; gap:10px; margin-bottom:15px; border-bottom:1px solid #35383f; padding-bottom:10px;"><button class="btn btn-primary" style="padding: 5px 10px; border-radius: 8px; border: none; cursor: pointer; color: white;" onclick="changeUnitForm(-1)">◀</button><img src="${IMG_UNITS}${unit.fullName.split(' ')[0]}.png" onerror="this.style.display='none'" style="width:50px;height:50px;object-fit:contain;"><div style="font-weight:bold; color:#fff; font-size:18px; flex: 1; text-align: center;">${unit.name}</div><button class="btn btn-primary" style="padding: 5px 10px; border-radius: 8px; border: none; cursor: pointer; color: white;" onclick="changeUnitForm(1)">▶</button></div>`;
+    let html = `<div style="display:flex; align-items:center; gap:10px; margin-bottom:15px; border-bottom:1px solid #35383f; padding-bottom:10px;"><button class="btn btn-primary" style="padding: 5px 10px;" onclick="changeUnitForm(-1)">◀</button><img src="${IMG_UNITS}${unit.fullName.split(' ')[0]}.png" onerror="this.onerror=null; this.src='images/${unit.fullName.split(' ')[0]}.png';" style="width:50px;height:50px;object-fit:contain;"><div style="font-weight:bold; color:#fff; font-size:18px; flex: 1; text-align: center;">${unit.name}</div><button class="btn btn-primary" style="padding: 5px 10px;" onclick="changeUnitForm(1)">▶</button></div>`;
     if (Object.keys(grouped).length === 0) html += `<div style="color:#a0a5b0;">No matching conditions found.</div>`;
     else { for (const [cat, conds] of Object.entries(grouped)) html += `<div class="cond-category"><strong>${cat}</strong>${conds.map(c => `<span class="cond-tag">${formatConditionName(c)}</span>`).join('')}</div>`; }
     document.getElementById('unitInfoContent').innerHTML = html; document.getElementById('unitInfoModal').classList.add('active');
@@ -1876,7 +2353,7 @@ function renderResults() {
                 if (!item) content = `<div style="color:#a0a5b0;">No valid units</div>`;
                 else {
                     let displayRar = item.rarity; let color = getRarityColor(displayRar); let txtColor = (displayRar === 'Legend' || displayRar === 'Best' || displayRar === 'Special') ? '#333' : '#fff';
-                    content = `<img src="${IMG_UNITS}${item.unit.fullName.split(' ')[0]}.png" onerror="this.style.display='none'"><div class="name">${bcText(item.unit.name, {size: 12})}</div><div class="res-bottom-banner" style="background:${color}; color:${txtColor};">${getDisplayRarity(displayRar)} ${item.pct}%</div>`;
+                    content = `<img src="${IMG_UNITS}${item.unit.fullName.split(' ')[0]}.png" onerror="this.onerror=null; this.src='images/${item.unit.fullName.split(' ')[0]}.png';"><div class="name">${bcText(item.unit.name, {size: 12})}</div><div class="res-bottom-banner" style="background:${color}; color:${txtColor};">${getDisplayRarity(displayRar)} ${item.pct}%</div>`;
                 }
             }
             let brutalHtml = '';
@@ -1888,7 +2365,8 @@ function renderResults() {
 }
 
 function openEditorPage(dateKey = null) {
-    document.getElementById('calendarPage').style.display = 'none'; document.getElementById('gridPage').classList.remove('active'); document.getElementById('editorPage').classList.add('active');
+    document.getElementById('userProfileBtn').style.display = 'none'; // Скрываем кнопку
+    document.getElementById('calendarPage').style.display = 'none'; document.getElementById('gridPage').classList.remove('active'); document.getElementById('accountPage').classList.remove('active'); document.getElementById('editorPage').classList.add('active');
     if (dateKey) { document.getElementById('editorDate').value = dateKey; document.getElementById('editorDate').disabled = false; } else { document.getElementById('editorDate').value = getDateKey(new Date()); document.getElementById('editorDate').disabled = false; }
     document.getElementById('editorBrutalToggle').checked = false; document.getElementById('editorUnitSearch').value = ''; document.getElementById('editorUnitResults').style.display = 'none';
     editorState = { rows: ["", "", ""], cols: ["", "", ""], isBrutal: false, brutals: Array(3).fill().map(()=>Array(3).fill("")), name: "" };
@@ -1898,9 +2376,12 @@ function openEditorPage(dateKey = null) {
     }
     updateEditor();
 }
-
-function closeEditorPage() { document.getElementById('editorPage').classList.remove('active'); document.getElementById('calendarPage').style.display = 'block'; renderCalendar(); }
-
+function closeEditorPage() { 
+    document.getElementById('editorPage').classList.remove('active'); 
+    document.getElementById('calendarPage').style.display = 'block'; 
+    document.getElementById('userProfileBtn').style.display = 'flex';
+    renderCalendar(); 
+}
 function setAppendMode(mode) {
     if (appendMode === mode) appendMode = 'replace'; else appendMode = mode;
     const btnA = document.getElementById('mode-and'); const btnO = document.getElementById('mode-or'); const btnN = document.getElementById('mode-not');
@@ -2036,7 +2517,7 @@ function openEditorCand(rC, cC, i, j) {
     const uniqueMap = new Map(); for (const u of valid) { const calc = calculatePercentageForCondition(rowC, cC, u.fullName, "editor"); if (!uniqueMap.has(u.id) || calc.pct < uniqueMap.get(u.id).pct) uniqueMap.set(u.id, { unit: u, pct: calc.pct }); }
     let items = Array.from(uniqueMap.values()); items.sort((a, b) => b.pct - a.pct);
     const list = document.getElementById('candidatesList'); list.innerHTML = '';
-    items.forEach(item => { const div = document.createElement('div'); div.className = 'candidate-item'; div.style.cursor = 'pointer'; div.innerHTML = `<img src="${IMG_UNITS}${item.unit.fullName.split(' ')[0]}.png" onerror="this.style.display='none'"><span>${item.unit.name}</span><span class="candidate-percent">${item.pct}%</span>`; div.onclick = () => showUnitInfo(item.unit.fullName); list.appendChild(div); });
+    items.forEach(item => { const div = document.createElement('div'); div.className = 'candidate-item'; div.style.cursor = 'pointer'; div.innerHTML = `<img src="${IMG_UNITS}${item.unit.fullName.split(' ')[0]}.png" onerror="this.onerror=null; this.src='images/${item.unit.fullName.split(' ')[0]}.png';"><span>${item.unit.name}</span><span class="candidate-percent">${item.pct}%</span>`; div.onclick = () => showUnitInfo(item.unit.fullName); list.appendChild(div); });
     document.getElementById('candidatesTitle').innerHTML = bcCondText((rowC ? rowC + ' ' : '') + (cC ? '+ ' + cC : ''), 20); document.getElementById('candidatesModal').classList.add('active');
 }
 
@@ -2076,12 +2557,9 @@ function handleEditorSearch(q) {
     const results = PROCESSED_UNITS.filter(u => { if (u.name.toLowerCase().includes(q)) return true; return u.allNames.some(n => n.toLowerCase().includes(q)); }).slice(0, 10);
     if (!results.length) { resultsDiv.innerHTML = '<div style="padding:10px;color:#999;">Nothing found</div>'; resultsDiv.style.display = 'block'; return; }
     resultsDiv.innerHTML = '';
-    results.forEach(u => { const item = document.createElement('div'); item.className = 'autocomplete-item'; item.innerHTML = `<img src="${IMG_UNITS}${u.fullName.split(' ')[0]}.png" onerror="this.style.display='none'"><span>${u.name}</span>`; item.onclick = () => { document.getElementById('editorUnitSearch').value = u.name; resultsDiv.style.display = 'none'; showUnitInfo(u.fullName); }; resultsDiv.appendChild(item); });
+    results.forEach(u => { const item = document.createElement('div'); item.className = 'autocomplete-item'; item.innerHTML = `<img src="${IMG_UNITS}${u.fullName.split(' ')[0]}.png" onerror="this.onerror=null; this.src='images/${u.fullName.split(' ')[0]}.png';"><span>${u.name}</span>`; item.onclick = () => { document.getElementById('editorUnitSearch').value = u.name; resultsDiv.style.display = 'none'; showUnitInfo(u.fullName); }; resultsDiv.appendChild(item); });
     resultsDiv.style.display = 'block';
 }
-
-function showBrutalInfo() { document.getElementById('brutalInfoModal').classList.add('active'); }
-function closeBrutalInfoModal() { document.getElementById('brutalInfoModal').classList.remove('active'); }
 
 async function init() {
     refreshAllBC(); buildUnits(); loadGrids(); renderCalendar(); await loadCustomCriteria(); 
@@ -2097,7 +2575,7 @@ async function init() {
     CANNONS['Curseblast'] = { name: "Curseblast Cannon", uses: 1, desc: "Adds a random constraint. All new answers become Legend rarity. (Uses: 1)" };
 
     document.getElementById('editorUnitSearch').addEventListener('input', function(e) { handleEditorSearch(e.target.value); });
-    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { cancelCannon(); closeWaterblastModal(); closeBrutalInfoModal(); } });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { cancelCannon(); closeWaterblastModal(); } });
 
     const today = new Date();
     if (Object.keys(gridsData).length === 0) {
