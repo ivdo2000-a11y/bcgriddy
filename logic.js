@@ -776,7 +776,7 @@ async function loadCustomCriteria() {
     if (location.protocol === 'file:') {
         console.warn("Running locally (file://). Skipping Custom fetch.");
     } else {
-        const categories = ['Traits', 'Range', 'Range Type', 'Multi-Hit', 'KB', 'CD', 'Speed', 'TBA', 'Price', 'Target Type', 'Rarity', 'Abilities', 'Misc', 'Gacha', 'Event', 'Source', 'Origin', 'Talents'];
+        const categories = ['Misc', 'Gacha', 'Talents'];
         for (const cat of categories) {
             try {
                 let response = await fetch(`${CUSTOM_TXT}${cat}.txt?t=${Date.now()}`);
