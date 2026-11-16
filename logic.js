@@ -2,7 +2,7 @@
    SUPABASE AUTH & ONLINE INTEGRATION
    ========================================================================= */
 const SUPABASE_URL = 'https://ziqkrsstxxclbfmndniq.supabase.co'; 
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcWtyc3N0eHhjbGJmbW5kbmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMzc3NzMsImV4cCI6MjEwODYxMzc3M30.SExQGbLetwrb63-s6LzTTInqleNB7-byAzMpf6yIZZ8'; // <-- ОБЯЗАТЕЛЬНО ВСТАВЬ СВОЙ КЛЮЧ ИЗ SUPABASE
+const SUPABASE_ANON_KEY = 'sb_publishable_lVwwOdGqcwWHT6Do7g61Pw_G8FEBciv'; // <-- ОБЯЗАТЕЛЬНО ВСТАВЬ СВОЙ КЛЮЧ ИЗ SUPABASE
 
 const STORAGE_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
 const IMG_UNITS = `${STORAGE_BASE}/imgunits/`;
