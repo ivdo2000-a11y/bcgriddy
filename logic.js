@@ -16,8 +16,9 @@ let userProfile = null;
 let guideData = {};
 
 try {
-    if (window.supabase && SUPABASE_ANON_KEY !== 'sb_publishable_lVwwOdGqcwWHT6Do7g61Pw_G8FEBciv' && SUPABASE_ANON_KEY !== 'sb_publishable_lVwwOdGqcwWHT6Do7g61Pw_G8FEBciv') {
+    if (window.supabase && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'sb_publishable_lVwwOdGqcwWHT6Do7g61Pw_G8FEBciv') {
         dbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log("✅ Supabase connected successfully.");
     } else {
         console.warn("⚠️ Supabase keys not configured. Running in OFFLINE mode.");
     }
@@ -270,9 +271,11 @@ window.openAccountPage = async () => {
             if (!formKey) continue;
             let unit = UNIT_MAP[formKey];
             let isOwned = usedBaseIds.has(baseId);
+            // ИСПОЛЬЗУЕМ formKey.split(' ')[0] ЧТОБЫ ПОЛУЧИТЬ "827-0"
+            let imgName = formKey.split(' ')[0]; 
             collectionHtml += `
                 <div class="collection-item ${isOwned ? '' : 'not-owned'}" onclick="showUnitInfo('${formKey}')">
-                    <img src="${IMG_UNITS}${baseId}.png" onerror="this.onerror=null; this.src='images/${baseId}.png';">
+                    <img src="${IMG_UNITS}${imgName}.png" onerror="this.onerror=null; this.src='images/${imgName}.png';">
                     <div class="name">${unit.name}</div>
                 </div>
             `;
@@ -323,8 +326,9 @@ window.openAccountPage = async () => {
                     ${sortedUnits.map(baseId => {
                         const formKey = Object.keys(UNITS_DATA).filter(k => k.startsWith(baseId + '-')).pop() || `${baseId}-0`;
                         const name = UNIT_MAP[formKey]?.name || 'Unknown';
+                        const imgName = formKey.split(' ')[0]; // Получаем "827-3"
                         return `<div style="background: #23252b; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #35383f;">
-                                <img src="${IMG_UNITS}${baseId}.png" onerror="this.onerror=null; this.src='images/${baseId}.png';" style="width: 40px; height: 40px; object-fit: contain;">
+                                <img src="${IMG_UNITS}${imgName}.png" onerror="this.onerror=null; this.src='images/${imgName}.png';" style="width: 40px; height: 40px; object-fit: contain;">
                                 <div style="color:#fff; font-size: 11px; font-weight: bold; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
                                 <div style="color:#a0a5b0; font-size: 10px;">Picks: ${unitCounts[baseId]}</div>
                             </div>`;
