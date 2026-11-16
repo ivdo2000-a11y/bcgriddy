@@ -6,30 +6,100 @@
 <title>Battle Cats Grid Game</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+    /* Normalizing Buttons */
+    button, .btn, .action-btn, .nav-btn, .res-tab, .equip-item {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        color: white !important;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-weight: bold;
+    }
+    
+    .btn-primary, .nav-btn-primary, .btn-default { background: #35383f; }
+    .btn-primary:hover, .nav-btn-primary:hover, .btn-default:hover { background: #4a4d55; }
+    .btn-danger { background: #d33838; }
+    .btn-danger:hover { background: #e04e4e; }
+
+    .action-btn { background: #35383f; border: 1px solid #4a4d55; width: 55px; height: 55px; border-radius: 12px; display: flex; align-items: center; justify-content: center; position: relative; }
+    .action-btn:hover { background: #4a4d55; transform: scale(1.05); }
+    .action-btn img { width: 32px; height: 32px; object-fit: contain; filter: opacity(0.8); }
+    
+    .small-btn { padding: 5px 12px; font-size: 14px; }
+
+    /* Account Page Styles */
+    .account-page { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #121317; z-index: 1000; overflow-y: auto; display: none; }
+    .account-page.active { display: block; }
+    .account-container { max-width: 1100px; margin: 0 auto; padding: 20px 20px 60px 20px; }
+    
+    .stat-card { background: #1a1b1e; border: 1px solid #35383f; border-radius: 15px; padding: 20px; text-align: center; }
+    .stat-value { font-size: 32px; font-weight: bold; margin-top: 10px; color: #fff; }
+    
+    .grid-thumb-container { background: #1a1b1e; border: 1px solid #35383f; border-radius: 15px; padding: 15px; transition: border-color 0.2s; display: flex; flex-direction: column; cursor: pointer; }
+    .grid-thumb-container:hover { border-color: #5865f2; }
+    .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; width: 80px; height: 80px; margin: 0 auto; }
+    .mini-cell { border-radius: 3px; background: #2c2e36; }
+    
+    /* Achievements List */
+    .achievement-row { display: flex; align-items: center; gap: 15px; background: #1a1b1e; border: 1px solid #35383f; border-radius: 12px; padding: 15px; margin-bottom: 10px; }
+    .achievement-icon { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; background: #2c2e36; }
+    .achievement-info { flex: 1; }
+    .achievement-title { color: #fff; font-weight: bold; font-size: 16px; margin-bottom: 4px; }
+    .achievement-desc { color: #a0a5b0; font-size: 13px; }
+    .achievement-progress-container { width: 200px; text-align: right; }
+    .progress-bar-bg { width: 100%; height: 8px; background: #2c2e36; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+    .progress-bar-fill { height: 100%; background: #ffd700; width: 0%; transition: width 0.3s; }
+    
+    /* Unit Collection */
+    .collection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin-top: 15px; margin-bottom: 25px; }
+    .collection-item { background: #1a1b1e; border: 1px solid #35383f; border-radius: 10px; padding: 10px; text-align: center; cursor: pointer; transition: transform 0.2s; }
+    .collection-item:hover { transform: scale(1.05); border-color: #5865f2; }
+    .collection-item img { width: 50px; height: 50px; object-fit: contain; margin-bottom: 5px; }
+    .collection-item .name {
+    	font-size: 11px;
+    	color: #fff;
+    	font-weight: bold;
+    	line-height: 1.15;
+    	display: -webkit-box;
+    	-webkit-line-clamp: 2;
+    	-webkit-box-orient: vertical;
+    	overflow: hidden;
+    	word-break: break-word;
+    	overflow-wrap: break-word;
+    	min-height: 2.3em;
+     }
+    .collection-item.not-owned { opacity: 0.4; filter: grayscale(100%); }
+</style>
 </head>
 <body>
-    <!-- PROFILE BUTTON (Top Left) -->
-    <div id="userProfileBtn" style="position: fixed; top: 20px; left: 20px; display: none; align-items: center; gap: 10px; background: #1a1b1e; padding: 8px 15px; border-radius: 20px; border: 1px solid #35383f; cursor: pointer; z-index: 2500;" onclick="openProfileModal()">
-        <img id="profileAvatar" src="" style="width: 32px; height: 32px; border-radius: 50%; background: #333; object-fit: cover;">
-        <span id="profileName" style="color: #fff; font-weight: bold; font-family: 'Segoe UI';">User</span>
-    </div>
-
     <!-- CALENDAR PAGE -->
-    <div class="calendar-container" id="calendarPage">
-        <div class="calendar-header" style="position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 20px; gap: 15px;">
+    <div class="calendar-container" id="calendarPage" style="margin-top: 20px;">
+        <div class="calendar-header" style="position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 20px; gap: 15px; padding-top: 60px;">
+            
+            <!-- PROFILE BUTTON (Top Left) -->
+            <div id="userProfileBtn" style="position: absolute; top: 0; left: 0; display: flex; align-items: center; gap: 10px; background: #1a1b1e; padding: 5px 15px 5px 5px; border-radius: 30px; border: 1px solid #35383f; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#5865f2'" onmouseout="this.style.borderColor='#35383f'" onclick="openAccountPage()">
+                <img id="profileAvatar" src="" onerror="this.onerror=null; this.src='cat1.png';" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                <span id="profileName" style="color: #fff; font-weight: bold; font-family: 'Segoe UI';">Guest</span>
+            </div>
+            
+            <!-- Title (Center) -->
             <div style="display: flex; flex-direction: column; align-items: center;">
                 <div class="calendar-title" style="font-size: 28px; font-weight: bold; letter-spacing: 1px;">Battle Cats Grid</div>
                 <div class="calendar-subtitle" style="font-size: 14px; color: #8888a0; margin-top: 5px;">Grid Archive</div>
             </div>
             
+            <!-- Settings/Admin (Right) -->
             <div class="calendar-actions" style="position: absolute; top: 0; right: 0; display: flex; gap: 10px;">
                 <button class="action-btn" onclick="startEndlessMode()" title="Infinite Mode">
-                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                    <span style="display:none; font-size:24px;">🌀</span>
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/infinity.png" onerror="this.onerror=null; this.src='infinity.png';">
                 </button>
                 <button class="action-btn" onclick="openEditorPage()" title="Grid Editor">
-                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                    <span style="display:none; font-size:24px;">🛠️</span>
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/wrench.png" onerror="this.onerror=null; this.src='wrench.png';">
+                </button>
+                <button class="action-btn" onclick="openSettingsModal()" title="Settings">
+                    <span style="font-size:24px;">⚙️</span>
                 </button>
                 <button class="action-btn" id="adminBtn" style="display:none; background: #d33838;" onclick="openAdminPanel()" title="Admin Panel">
                     <span style="font-size:24px;">👑</span>
@@ -38,38 +108,70 @@
         </div>
         
         <div class="calendar-nav">
-            <button onclick="changeMonth(-1)">◀</button>
+            <button class="nav-btn" onclick="changeMonth(-1)" style="font-size: 20px; background: transparent;">◀</button>
             <span id="currentMonth" style="font-weight: bold; font-size: 18px;"></span>
-            <button onclick="changeMonth(1)">▶</button>
+            <button class="nav-btn" onclick="changeMonth(1)" style="font-size: 20px; background: transparent;">▶</button>
         </div>
         <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+
+    <!-- ACCOUNT PAGE -->
+    <div class="account-page" id="accountPage">
+        <div class="top-nav" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 30px; background: #1a1b1e; border-bottom: 1px solid #35383f; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px; background: #35383f; padding: 5px 15px 5px 5px; border-radius: 30px; cursor: pointer; transition: background 0.2s;" onclick="openAccountPage()" onmouseover="this.style.background='#4a4d55'" onmouseout="this.style.background='#35383f'">
+                    <img id="profileAvatarAccount" src="" onerror="this.onerror=null; this.src='cat1.png';" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover;">
+                    <span id="profileNameAccount" style="color: #fff; font-weight: bold; font-family: 'Segoe UI'; font-size: 14px;">Guest</span>
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div class="nav-btn" style="font-size:24px; font-weight: bold; padding:0; cursor:pointer; line-height: 1;" onclick="closeAccountPage()">Battle Cats Grid</div>
+                <div style="font-size:14px; color: #a0a5b0; margin-top:5px;">Account Stats</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="action-btn" onclick="startEndlessMode()" title="Infinite Mode">
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/infinity.png" onerror="this.onerror=null; this.src='infinity.png';">
+                </button>
+                <button class="action-btn" onclick="openEditorPage()" title="Grid Editor">
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/wrench.png" onerror="this.onerror=null; this.src='wrench.png';">
+                </button>
+                <button class="action-btn" onclick="openSettingsModal()" title="Settings">
+                    <span style="font-size:24px;">⚙️</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="account-container" id="accountContent">
+            <!-- Dynamic Content -->
+        </div>
     </div>
 
     <!-- GAME PAGE -->
     <div class="grid-page" id="gridPage">
         <div class="top-nav">
             <div style="display: flex; justify-content: flex-start; align-items: center; gap: 10px;">
-                <button class="nav-btn nav-btn-primary" onclick="closeGridPage()">← Back</button>
-                <button class="nav-btn nav-btn-primary" id="nextEndlessBtn" onclick="startEndlessMode()" style="display:none; padding: 8px 16px; font-size: 14px; border-radius: 8px;">Next Grid</button>
+                <div style="display: flex; align-items: center; gap: 10px; background: #35383f; padding: 5px 15px 5px 5px; border-radius: 30px; cursor: pointer; transition: background 0.2s;" onclick="openAccountPage()" onmouseover="this.style.background='#4a4d55'" onmouseout="this.style.background='#35383f'">
+                    <img id="profileAvatarGrid" src="" onerror="this.onerror=null; this.src='cat1.png';" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover;">
+                    <span id="profileNameGrid" style="color: #fff; font-weight: bold; font-family: 'Segoe UI'; font-size: 14px;">Guest</span>
+                </div>
+                <button class="nav-btn btn-primary small-btn" id="nextEndlessBtn" onclick="startEndlessMode()" style="display:none;">Next Grid</button>
             </div>
             
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
                 <div style="display: flex; align-items: center; gap: 15px;">
-                    <button class="nav-btn" id="prevGridBtn" onclick="navDailyGrid(-1)" style="font-size: 18px; padding: 5px 10px;">◀</button>
+                    <button class="nav-btn" id="prevGridBtn" onclick="navDailyGrid(-1)" style="font-size: 18px; padding: 5px 10px; background: transparent;">◀</button>
                     <div class="nav-btn" style="font-size:24px; font-weight: bold; padding:0; cursor:pointer; line-height: 1;" onclick="closeGridPage()">Battle Cats Grid</div>
-                    <button class="nav-btn" id="nextGridBtn" onclick="navDailyGrid(1)" style="font-size: 18px; padding: 5px 10px;">▶</button>
+                    <button class="nav-btn" id="nextGridBtn" onclick="navDailyGrid(1)" style="font-size: 18px; padding: 5px 10px; background: transparent;">▶</button>
                 </div>
                 <div id="modeTitle" style="font-size:14px; color: #a0a5b0; margin-top:5px;"></div>
             </div>
             
             <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
                 <button class="action-btn" onclick="startEndlessMode()" title="Infinite Mode">
-                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                    <span style="display:none; font-size:24px;">🌀</span>
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/infinity.png" onerror="this.onerror=null; this.src='infinity.png';">
                 </button>
                 <button class="action-btn" onclick="openEditorPage()" title="Grid Editor">
-                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                    <span style="display:none; font-size:24px;">🛠️</span>
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/wrench.png" onerror="this.onerror=null; this.src='wrench.png';">
                 </button>
             </div>
         </div>
@@ -86,7 +188,7 @@
                         <tbody id="gridBody"></tbody>
                     </table>
                 </div>
-                <button class="btn btn-danger" id="cancelCannonBtn" style="display:none; width:100%; margin-top:15px; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; text-transform:uppercase;" onclick="cancelCannon()">Cancel</button>
+                <button class="btn btn-danger" id="cancelCannonBtn" style="display:none; width:100%; margin-top:15px; padding:15px; font-size:16px; text-transform:uppercase;" onclick="cancelCannon()">Cancel</button>
 
                 <div class="results-section" id="inlineResults">
                     <div class="results-tabs">
@@ -152,9 +254,9 @@
                     <div class="panel-title" data-bc="LOADOUT" data-bc-size="16"></div>
                     <div class="cannon-display" id="cannonBtn" onclick="openEquipSelectModal()">
                         <div class="loadout-container">
-                            <img class="loadout-foundation" id="imgFoundation" src="" onerror="this.style.display='none'">
-                            <img class="loadout-style" id="imgStyle" src="" onerror="this.style.display='none'">
-                            <img class="loadout-cannon" id="imgCannon" src="" onerror="this.style.display='none'">
+                            <img class="loadout-foundation" id="imgFoundation" src="" onerror="this.onerror=null; this.src='foundation_default.png';">
+                            <img class="loadout-style" id="imgStyle" src="" onerror="this.onerror=null; this.src='style_default.png';">
+                            <img class="loadout-cannon" id="imgCannon" src="" onerror="this.onerror=null; this.src='cannon_default.png';">
                         </div>
                         <div id="cannonFallback" style="display:none; font-size:40px;">🚀</div>
                         
@@ -167,7 +269,7 @@
                         <span id="setBonusText" style="display:none; color:#ffd700; font-weight:bold; margin-top:5px;">Set Bonus Active!</span>
                     </div>
                     <div class="cannon-uses-text" style="margin-top:5px;">Uses: <span id="cannonCharges">0</span></div>
-                    <button class="btn btn-primary" style="margin-top: 15px; width: 100%; padding: 10px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; color: white;" onclick="useCannon()">FIRE!</button>
+                    <button class="btn btn-primary" style="margin-top: 15px; width: 100%; padding: 10px;" onclick="useCannon()">FIRE!</button>
                 </div>
 
                 <div class="sidebar-panel" id="finalScorePanel">
@@ -176,8 +278,8 @@
                         <div class="final-grade" id="finalGrade">A</div>
                         <div class="final-score-value" id="finalScoreValue">0</div>
                     </div>
-                    <button class="breakdown-btn" onclick="toggleBreakdown()">Show Breakdown</button>
-                    <button class="breakdown-btn" style="background:#4caf50; color:white; border:none; margin-top:5px;" onclick="shareResult()">📤 Share Result</button>
+                    <button class="breakdown-btn btn-default" onclick="toggleBreakdown()" style="padding:8px; margin-top:10px;">Show Breakdown</button>
+                    <button class="breakdown-btn btn-primary" style="margin-top:5px; padding:8px;" onclick="shareResult()">📤 Share Result</button>
                     <div id="scoreBreakdown">
                         <div style="font-weight:bold; margin-bottom:10px; color:#fff; font-size:16px;">Score breakdown</div>
                         <div class="bd-row"><span>Filled cells (9 x 500)</span><span id="bd-cells">+0</span></div>
@@ -192,11 +294,8 @@
                 </div>
 
                 <div class="sidebar-panel actions-panel">
-                    <button class="btn btn-danger" onclick="resetCurrentGrid()">
+                    <button class="btn btn-danger" onclick="resetCurrentGrid()" style="padding: 15px;">
                         🔄 <span data-bc="Reset" data-bc-size="16"></span>
-                    </button>
-                    <button class="btn btn-primary" onclick="openSettingsModal()" style="margin-top: 10px;">
-                        ⚙️ Settings
                     </button>
                 </div>
             </div>
@@ -207,7 +306,10 @@
     <div class="editor-page" id="editorPage">
         <div class="top-nav">
             <div style="display: flex; justify-content: flex-start; align-items: center; gap: 10px;">
-                <button class="nav-btn nav-btn-primary" onclick="closeEditorPage()">← Back</button>
+                <div style="display: flex; align-items: center; gap: 10px; background: #35383f; padding: 5px 15px 5px 5px; border-radius: 30px; cursor: pointer; transition: background 0.2s;" onclick="openAccountPage()" onmouseover="this.style.background='#4a4d55'" onmouseout="this.style.background='#35383f'">
+                    <img id="profileAvatarEditor" src="" onerror="this.onerror=null; this.src='cat1.png';" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover;">
+                    <span id="profileNameEditor" style="color: #fff; font-weight: bold; font-family: 'Segoe UI'; font-size: 14px;">Guest</span>
+                </div>
             </div>
             
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
@@ -217,12 +319,10 @@
             
             <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
                 <button class="action-btn" onclick="startEndlessMode()" title="Infinite Mode">
-                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/infinity.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                    <span style="display:none; font-size:24px;">🌀</span>
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/infinity.png" onerror="this.onerror=null; this.src='infinity.png';">
                 </button>
                 <button class="action-btn" onclick="openEditorPage()" title="Grid Editor">
-                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/wrench.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                    <span style="display:none; font-size:24px;">🛠️</span>
+                    <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/imgother/wrench.png" onerror="this.onerror=null; this.src='wrench.png';">
                 </button>
             </div>
         </div>
@@ -252,78 +352,71 @@
     </div>
 
     <!-- MODALS -->
-    
-    <!-- Auth Modal -->
     <div class="modal" id="authModal">
-        <div class="modal-content" style="max-width: 400px; text-align: center;">
-            <h3>Login to Battle Cats Grid</h3>
-            <button class="btn btn-primary" style="width:100%; margin-bottom:10px; padding: 15px;" onclick="loginWithProvider('google')">Login with Google</button>
-            <button class="btn" style="width:100%; margin-bottom:10px; padding: 15px; background:#5865f2; color:white; border:none; font-weight:bold; border-radius:8px; cursor:pointer;" onclick="loginWithProvider('discord')">Login with Discord</button>
+        <div class="modal-content" style="max-width: 400px; text-align: center; position: relative;">
+            <span onclick="document.getElementById('authModal').classList.remove('active')" style="position: absolute; top: 15px; right: 20px; cursor: pointer; color: #888; font-size: 24px;">×</span>
+            <h3>Login to Save Progress</h3>
+            <p style="color: #a0a5b0; font-size: 14px; margin-bottom: 20px;">Logging in allows you to save your stats in the cloud, submit grids, and vote on units.</p>
+            
+            <button class="btn btn-primary" style="width:100%; margin-bottom:10px; padding: 15px;" onclick="loginWithProvider('discord')">Login with Discord</button>
             
             <div style="margin: 20px 0; color: #888;">— OR —</div>
             
             <input type="email" id="authEmail" class="search-input" placeholder="Email">
             <input type="password" id="authPassword" class="search-input" placeholder="Password">
             <button class="btn btn-primary" style="width:100%; margin-top:10px; padding: 15px;" onclick="loginWithEmail()">Login / Register</button>
+            
+            <button class="btn btn-default" style="width:100%; margin-top:15px; padding: 15px;" onclick="document.getElementById('authModal').classList.remove('active')">Play as Guest</button>
         </div>
     </div>
 
-    <!-- Profile Modal -->
-    <div class="modal" id="profileModal">
-        <div class="modal-content" style="max-width: 600px; text-align: left;">
-            <h3 id="profModalTitle" style="text-align: center;">User Profile</h3>
-            <div id="profStats" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;"></div>
-            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px;" onclick="logout()">Logout</button>
-            <button class="btn btn-primary" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; margin-top:10px;" onclick="document.getElementById('profileModal').classList.remove('active')">Close</button>
-        </div>
-    </div>
-
-    <!-- Settings Modal -->
     <div class="modal" id="settingsModal">
         <div class="modal-content" style="max-width: 500px;">
             <h3>Settings</h3>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <span style="color:#fff;">Lock Loadout</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="settingLockLoadout" onchange="toggleSetting('lockLoadout')">
-                    <span class="slider"></span>
-                </label>
+                <span style="color:#fff;">Lock Loadout (Don't reset to Default)</span>
+                <label class="toggle-switch"><input type="checkbox" id="settingLockLoadout" onchange="toggleSetting('lockLoadout')"><span class="slider"></span></label>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <span style="color:#fff;">Lock Difficulty</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="settingLockDifficulty" onchange="toggleSetting('lockDifficulty')">
-                    <span class="slider"></span>
-                </label>
+                <label class="toggle-switch"><input type="checkbox" id="settingLockDifficulty" onchange="toggleSetting('lockDifficulty')"><span class="slider"></span></label>
             </div>
             <hr style="border-color: #35383f; margin: 20px 0;">
             <div style="display: flex; gap: 10px;">
-                <button class="btn btn-primary" style="flex: 1; padding: 10px;" onclick="exportSave()">📥 Export Save</button>
+                <button class="btn btn-primary" style="flex: 1; padding: 10px;" onclick="exportSave()">📥 Export Local Save</button>
                 <label class="btn btn-primary" style="flex: 1; padding: 10px; text-align: center; cursor: pointer;">
-                    📤 Import Save
+                    📤 Import Local Save
                     <input type="file" id="importFile" style="display: none;" accept=".json" onchange="importSave(event)">
                 </label>
             </div>
-            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; margin-top:20px;" onclick="document.getElementById('settingsModal').classList.remove('active')">Close</button>
+            <button class="btn btn-danger" style="width:100%; padding:15px; margin-top:20px;" onclick="document.getElementById('settingsModal').classList.remove('active')">Close</button>
         </div>
     </div>
 
-    <!-- Admin Panel Modal -->
-    <div class="modal" id="adminPanelModal">
+    <div class="modal" id="historyModal">
         <div class="modal-content" style="max-width: 800px;">
-            <h3>Pending Grid Submissions</h3>
-            <div id="pendingGridsList" style="display: flex; flex-direction: column; gap: 15px; max-height: 60vh; overflow-y: auto; margin-bottom: 20px;"></div>
-            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px;" onclick="document.getElementById('adminPanelModal').classList.remove('active')">Close</button>
+            <h3 id="historyTitle">History</h3>
+            <div id="historyList" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;"></div>
+            <button class="btn btn-danger" style="width:100%; padding:15px;" onclick="document.getElementById('historyModal').classList.remove('active')">Close</button>
+        </div>
+    </div>
+    
+    <div class="modal" id="allMedalsModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h3 style="display: flex; align-items: center; gap: 10px;">
+                <img src="https://ziqkrsstxxclbfmndniq.supabase.co/storage/v1/object/public/achpng/ach1.png" onerror="this.onerror=null; this.src='ach1.png';" style="width: 30px; height: 30px;"> All Meow Medals
+            </h3>
+            <div id="allMedalsList" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;"></div>
+            <button class="btn btn-danger" style="width:100%; padding:15px;" onclick="document.getElementById('allMedalsModal').classList.remove('active')">Close</button>
         </div>
     </div>
 
-    <!-- Other Modals (equipSelect, unitModal, etc.) -->
     <div class="modal" id="equipSelectModal" style="z-index: 2500;">
         <div class="modal-content" style="max-width: 900px; width: 95%;">
             <h3 style="margin-bottom:10px;">Select Loadout</h3>
             <p style="text-align:center; font-size:14px; color:#a0a5b0; margin-bottom:20px;">Note: You cannot change equipment after starting the grid.</p>
             
-            <button class="btn btn-primary" style="width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; color: white; margin-bottom: 20px; font-size: 15px;" onclick="randomizeLoadout()">🎲 Случайный лоудаут</button>
+            <button class="btn btn-primary" style="width: 100%; padding: 12px; margin-bottom: 20px; font-size: 15px;" onclick="randomizeLoadout()">🎲 Random Loadout</button>
             
             <div class="equip-list-container">
                 <h4 style="color:#e09f3e; border-bottom:1px solid #4a4d55; padding-bottom:5px; margin-bottom:10px;">Cannons</h4>
@@ -337,7 +430,7 @@
             </div>
             
             <div class="modal-buttons" style="justify-content:center; margin-top:25px;">
-                <button class="btn btn-danger" onclick="closeEquipSelectModal()" style="width:100%;">Close</button>
+                <button class="btn btn-danger" onclick="closeEquipSelectModal()" style="width:100%; padding: 15px;">Close</button>
             </div>
         </div>
     </div>
@@ -347,7 +440,7 @@
             <h3 data-bc="Select Unit" data-bc-size="22"></h3>
             <input type="text" class="search-input" id="unitSearch" placeholder="Start typing (min 3 chars)..." autocomplete="off">
             <div class="suggestions" id="suggestions"></div>
-            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px;" onclick="closeUnitModal()">
+            <button class="btn btn-danger" style="width:100%; padding:15px;" onclick="closeUnitModal()">
                 <span data-bc="Cancel" data-bc-size="16"></span>
             </button>
         </div>
@@ -357,7 +450,7 @@
         <div class="modal-content" style="display: flex; flex-direction: column; max-height: 85vh;">
             <h3><span data-bc="Choose wisely" data-bc-size="22"></span></h3>
             <div class="cannon-modal-grid" id="waterblastOptions" style="overflow-y: auto; flex: 1; padding-right: 5px;"></div>
-            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; margin-top: 15px; flex-shrink: 0;" onclick="closeWaterblastModal()">Cancel</button>
+            <button class="btn btn-danger" style="width:100%; padding:15px; margin-top: 15px; flex-shrink: 0;" onclick="closeWaterblastModal()">Cancel</button>
         </div>
     </div>
 
@@ -365,14 +458,14 @@
         <div class="modal-content" style="max-width: 650px;">
             <h3 id="candidatesTitle">Candidates</h3>
             <div id="candidatesList" class="candidates-grid"></div>
-            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px;" onclick="closeCandidatesModal()">Close</button>
+            <button class="btn btn-danger" style="width:100%; padding:15px;" onclick="closeCandidatesModal()">Close</button>
         </div>
     </div>
 
     <div class="modal" id="unitInfoModal" style="z-index: 3100;">
         <div class="modal-content" style="max-width: 500px;">
             <div id="unitInfoContent"></div>
-            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; margin-top:15px;" onclick="closeUnitInfoModal()">Close</button>
+            <button class="btn btn-danger" style="width:100%; padding:15px; margin-top:15px;" onclick="closeUnitInfoModal()">Close</button>
         </div>
     </div>
 
@@ -382,14 +475,14 @@
             <input type="text" class="search-input" id="condSearch" placeholder="Search condition..." oninput="filterConditions()">
             
             <div id="condModes" style="display:flex; gap:10px; margin-bottom:15px; justify-content:center; flex-shrink: 0;">
-                <button class="cond-btn mode-btn" id="mode-and" onclick="setAppendMode('and')">+ AND</button>
-                <button class="cond-btn mode-btn" id="mode-or" onclick="setAppendMode('or')">+ OR</button>
-                <button class="cond-btn mode-btn" id="mode-not" onclick="setAppendMode('not')">+ NOT</button>
+                <button class="btn btn-default" id="mode-and" onclick="setAppendMode('and')">+ AND</button>
+                <button class="btn btn-default" id="mode-or" onclick="setAppendMode('or')">+ OR</button>
+                <button class="btn btn-default" id="mode-not" onclick="setAppendMode('not')">+ NOT</button>
             </div>
             
             <div id="condList" class="cond-list-container" style="flex: 1; overflow-y: auto; margin-bottom: 15px;"></div>
             
-            <button class="btn btn-danger" style="width:100%; padding:15px; border-radius:8px; border:none; font-weight:bold; cursor:pointer; color:white; font-size:16px; flex-shrink: 0;" onclick="closeConditionSelectModal()">Cancel</button>
+            <button class="btn btn-danger" style="width:100%; padding:15px; flex-shrink: 0;" onclick="closeConditionSelectModal()">Cancel</button>
         </div>
     </div>
 
