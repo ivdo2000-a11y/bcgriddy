@@ -16,7 +16,7 @@ let userProfile = null;
 let guideData = {};
 
 try {
-    if (window.supabase && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'sb_publishable_lVwwOdGqcwWHT6Do7g61Pw_G8FEBciv') {
+    if (window.supabase && SUPABASE_ANON_KEY) {
         dbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         console.log("✅ Supabase connected successfully.");
     } else {
